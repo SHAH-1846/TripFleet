@@ -1,0 +1,57 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables
+.env
+.env.*.local
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage reports
+coverage/
+
+# IDEs & editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Optional: Ignore React dev cache
+.cache/
+.cache-loader/
+
+# Optional: Ignore testing-related files
+jest-test-results.json
+
+# Optional: Ignore local database/data
+data/
+*.sqlite
+*.db
+*.db-journal
