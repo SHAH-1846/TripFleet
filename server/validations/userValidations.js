@@ -9,6 +9,7 @@ exports.registrationValidator = async function (data) {
     data.firstName = !isEmpty(data.firstName) ? data.firstName : "";
     data.lastName = !isEmpty(data.lastName) ? data.lastName : "";
     data.email = !isEmpty(data.email) ? data.email : "";
+    data.user_type = !isEmpty(data.user_type) ? data.user_type : "";
     data.password = !isEmpty(data.password) ? data.password : "";
     data.confirmPassword = !isEmpty(data.confirmPassword)
       ? data.confirmPassword
@@ -45,6 +46,19 @@ exports.registrationValidator = async function (data) {
       }
 
       //Validate already exists or not from database
+
+
+
+      //Validating UserType
+      if(validator.isEmpty(data.user_type)) {
+        errors.user_type = "User type is required";
+      }else if(data.user_type === "admin") {
+        errors.user_type = "Admin accounts cannot be created through public registration";
+      }else if(data.user_type !== "customer" && data.user_type !== "driver") {
+        errors.user_type = "User type must be either 'customer' or 'driver'";
+      }
+
+
 
 
       //Validating Password

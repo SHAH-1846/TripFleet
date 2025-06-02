@@ -1,3 +1,5 @@
+const bcrypt = require('bcryptjs');
+const users = require("../db/models/users");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const registrationValidator =
@@ -16,6 +18,29 @@ exports.register = async function (req, res) {
       const email = req.body.email;
       const password = req.body.password;
       const cofirmPassword = req.body.cofirmPassword;
+      const user_type = req.body.user_type;
+
+      let salt = await bcrypt.genSalt(10);
+      let hashed_password = await bcrypt.hash(password, salt);
+      console.log("hashed_password : ", hashed_password);
+
+      let new_user = await users.create({
+        firstName,
+        lastName,
+        email,
+        user_type,
+        password : hashed_password,
+      });
+
+      //Send email for email verification
+
+      let response = success_function({
+        status : 201,
+        message : "User registered successfully",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+
     }else {
         let response = error_function({
             status : 400,
