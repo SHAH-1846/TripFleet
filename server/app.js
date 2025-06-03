@@ -6,8 +6,9 @@ const morgan = require("morgan");
 const cron = require("node-cron");
 const dotenv = require("dotenv");
 const db = require("./db/config");
-const fetchDisposableEmailDomains = require("./validations/email-validation/fetchDisposableDomains");
+const fetchDisposableEmailDomains = require("./validations/email-validations/fetchDisposableDomains");
 const userRoutes = require("./routes/userRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 /* CONFIGURATIONS */
 dotenv.config();
@@ -29,6 +30,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/users", userRoutes);
+app.use("/auth", authRoutes);
 
 //Running cron at startup
 fetchDisposableEmailDomains();

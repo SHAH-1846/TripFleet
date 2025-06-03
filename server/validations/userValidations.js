@@ -1,13 +1,8 @@
 const validator = require("validator");
 const isEmpty = require("./is_empty");
-const path = require("path");
-const fs = require("fs");
 const isDisposable = require("is-disposable-email");
-const disposableDomains = require("disposable-email-domains");
-const EMAILS_FILE_PATH = path.join(
-  __dirname,
-  "email-validation/disposable_email_blacklist.conf"
-);
+const isDisposableEmail = require('./email-validations/emailValidations').isDisposableEmail;
+const isTemporaryEmail = require('./email-validations/emailValidations').isTemporaryEmail;
 const users = require("../db/models/users");
 
 exports.registrationValidator = async function (data) {
@@ -46,27 +41,6 @@ exports.registrationValidator = async function (data) {
         email: { $regex: data.email, $options: "i" },
       });
 
-      function isDisposableEmail(email) {
-        const domain = email.split("@")[1].toLowerCase();
-        return disposableDomains.includes(domain);
-      }
-
-      function isTemporaryEmail(email) {
-        try {
-          const domain = email.split("@")[1]?.toLowerCase();
-          if (!domain) return false;
-
-          const domainList = fs
-            .readFileSync(EMAILS_FILE_PATH, "utf-8")
-            .split("\n")
-            .map((d) => d.trim().toLowerCase());
-
-          return domainList.includes(domain);
-        } catch (error) {
-          console.error("Error validating disposable email:", error);
-          return false;
-        }
-      }
 
       if (validator.isEmpty(data.email)) {
         errors.email = "Email is required";
