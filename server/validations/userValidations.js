@@ -1,5 +1,14 @@
 const validator = require("validator");
 const isEmpty = require("./is_empty");
+const path = require("path");
+const fs = require("fs");
+const isDisposable = require("is-disposable-email");
+const disposableDomains = require("disposable-email-domains");
+const EMAILS_FILE_PATH = path.join(
+  __dirname,
+  "email-validation/disposable_email_blacklist.conf"
+);
+const users = require("../db/models/users");
 
 exports.registrationValidator = async function (data) {
   try {
@@ -18,53 +27,79 @@ exports.registrationValidator = async function (data) {
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
     } else {
-
-
-        //Validating FirstName
+      //Validating FirstName
       if (validator.isEmpty(data.firstName)) {
         errors.firstName = "First Name is required";
-      }else if (!validator.isLength(data.firstName, { min: 2, max: 30 })) {
+      } else if (!validator.isLength(data.firstName, { min: 2, max: 30 })) {
         errors.firstName = "First Name must be between 2 and 30 charactors";
       }
-
 
       //Validating LastName
       if (validator.isEmpty(data.lastName)) {
         errors.lastName = "Last Name is required";
-      }else if (!validator.isLength(data.lastName, { min: 2, max: 30 })) {
+      } else if (!validator.isLength(data.lastName, { min: 2, max: 30 })) {
         errors.lastName = "Last Name must be between 2 and 30 charactors";
       }
 
-
       //Validating Email
+      let emailCount = await users.countDocuments({
+        email: { $regex: data.email, $options: "i" },
+      });
+
+      function isDisposableEmail(email) {
+        const domain = email.split("@")[1].toLowerCase();
+        return disposableDomains.includes(domain);
+      }
+
+      function isTemporaryEmail(email) {
+        try {
+          const domain = email.split("@")[1]?.toLowerCase();
+          if (!domain) return false;
+
+          const domainList = fs
+            .readFileSync(EMAILS_FILE_PATH, "utf-8")
+            .split("\n")
+            .map((d) => d.trim().toLowerCase());
+
+          return domainList.includes(domain);
+        } catch (error) {
+          console.error("Error validating disposable email:", error);
+          return false;
+        }
+      }
+
       if (validator.isEmpty(data.email)) {
         errors.email = "Email is required";
-      }else if (!validator.isLength(data.email, { min: 2, max: 30 })) {
+      } else if (!validator.isLength(data.email, { min: 2, max: 30 })) {
         errors.email = "Email must be between 2 and 30 charactors";
-      }else if (!validator.isEmail(data.email)) {
+      } else if (!validator.isEmail(data.email)) {
         errors.email = "Invalid email";
+      } else if (isDisposable(data.email)) {
+        errors.email = "Disposable email addresses are not allowed";
+      } else if (isDisposableEmail(data.email)) {
+        errors.email =
+          "Please use a real email address — temporary email services are not supported";
+      } else if (isTemporaryEmail(data.email)) {
+        errors.email =
+          "For security reasons, disposable email addresses are not accepted";
+      } else if (emailCount > 0) {
+        errors.email = "An account with this email already exists";
       }
-
-      //Validate already exists or not from database
-
-
 
       //Validating UserType
-      if(validator.isEmpty(data.user_type)) {
+      if (validator.isEmpty(data.user_type)) {
         errors.user_type = "User type is required";
-      }else if(data.user_type === "admin") {
-        errors.user_type = "Admin accounts cannot be created through public registration";
-      }else if(data.user_type !== "customer" && data.user_type !== "driver") {
+      } else if (data.user_type === "admin") {
+        errors.user_type =
+          "Admin accounts cannot be created through public registration";
+      } else if (data.user_type !== "customer" && data.user_type !== "driver") {
         errors.user_type = "User type must be either 'customer' or 'driver'";
       }
-
-
-
 
       //Validating Password
       if (validator.isEmpty(data.password)) {
         errors.password = "Password is required";
-      }else if (
+      } else if (
         !validator.isStrongPassword(data.password, {
           minLength: 8,
           minLowercase: 1,
@@ -75,9 +110,9 @@ exports.registrationValidator = async function (data) {
       ) {
         errors.password =
           "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character";
-      }else if (validator.isEmpty(data.confirmPassword)) {
+      } else if (validator.isEmpty(data.confirmPassword)) {
         errors.confirmPassword = "Please confirm your password";
-      }else if (
+      } else if (
         !validator.isStrongPassword(data.confirmPassword, {
           minLength: 8,
           minLowercase: 1,
@@ -88,12 +123,11 @@ exports.registrationValidator = async function (data) {
       ) {
         errors.confirmPassword =
           "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character";
-      }else if (data.password !== data.confirmPassword) {
+      } else if (data.password !== data.confirmPassword) {
         errors.confirmPassword =
           "The confirm password does not match the original password";
       }
     }
-
 
     return {
       errors,
