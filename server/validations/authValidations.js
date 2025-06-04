@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 exports.loginValidator = async function (data) {
   try {
     let errors = {};
-    let user = await users.findOne({email : data.email.trim().toLowerCase()});
+    let user = data.email ? (await users.findOne({email : data.email.trim().toLowerCase()})) : false;
 
     data = !isEmpty(data) ? data : "";
     data.email = !isEmpty(data.email) ? data.email : "";

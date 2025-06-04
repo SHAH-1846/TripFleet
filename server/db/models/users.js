@@ -11,6 +11,9 @@ const users = new mongoose.Schema({
         required : true,
         trim : true,
     },
+    googleId : {
+        type : String,
+    },
     email : {
         type : String,
         required : true,
