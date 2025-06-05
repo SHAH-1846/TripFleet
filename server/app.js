@@ -10,6 +10,7 @@ const users = require('./db/models/users');
 const fetchDisposableEmailDomains = require("./validations/email-validations/fetchDisposableDomains");
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
+const tripRoutes = require("./routes/tripRoutes");
 const passport = require('passport');
 const session = require('express-session');
 const path = require('path');
@@ -60,6 +61,7 @@ app.get("/", (req, res) => {
 
 app.use("/users", userRoutes);
 app.use("/auth", authRoutes);
+app.use("/trips", tripRoutes);
 
 //Running cron at startup
 fetchDisposableEmailDomains();
