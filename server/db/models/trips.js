@@ -51,6 +51,7 @@ const trips = new mongoose.Schema(
   }
 );
 
+trips.index({'startLocation.address' : 'text', 'destination.address' : 'text'});
 //Add 2dsphere index for routeGeoJSON
 trips.index({routeGeoJSON : '2dsphere'});
 module.exports = mongoose.model("trips", trips);

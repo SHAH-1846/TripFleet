@@ -10,6 +10,7 @@ const setAccessControl = (access_type) => {
 }
 
 router.post('/', tripController.createTrip);
+router.get('/', tripController.getAllTrips);
 
 
 module.exports = router;
