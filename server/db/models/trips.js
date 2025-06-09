@@ -51,6 +51,12 @@ const trips = new mongoose.Schema(
       type : Boolean,
       default : false,
     },
+
+    status : {
+      type : String,
+      default : "scheduled",
+      enum : ["scheduled","started","completed"],
+    },
     
     actualStartTime : Date,
     actualEndTime : Date,
@@ -60,6 +66,7 @@ const trips = new mongoose.Schema(
       coordinates : [Number] //[lng, lat]
     },
 
+    lastUpdated : Date,
     tripDate : Date,
     startTime : String,
     endTime : String,

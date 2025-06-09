@@ -10,7 +10,8 @@ const setAccessControl = (access_type) => {
 }
 
 router.post('/', tripController.createTrip);
+router.put('/:tripId', tripController.updatedTrip);
 router.get('/', tripController.getAllTrips);
-
+router.put('/:tripId/location', tripController.updateTripLocation);
 
 module.exports = router;

@@ -3,9 +3,14 @@ const trips = require("../db/models/trips");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const tripValidator = require("../validations/tripValidations").tripValidator;
+const tripsUpdateValidator =
+  require("../validations/tripValidations").tripsUpdateValidator;
+const tripsLocationUpdateValidator =
+  require("../validations/tripValidations").tripsLocationUpdateValidator;
 const getDistanceFromLatLonInMeters =
   require("../utils/tripUtilities").getDistanceFromLatLonInMeters;
 const dotenv = require("dotenv");
+const { response } = require("express");
 dotenv.config();
 
 exports.createTrip = async function (req, res) {
@@ -62,6 +67,140 @@ exports.createTrip = async function (req, res) {
       });
       res.status(response.statusCode).send(response);
       return;
+    } else {
+      let response = error_function({
+        status: 400,
+        message: "Validation Failed",
+      });
+      response.errors = errors;
+
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Trip creation error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.updatedTrip = async function (req, res) {
+  try {
+    const { errors, isValid } = tripsUpdateValidator(req.body);
+
+    if (isValid) {
+      const tripId = req.params.tripId;
+      const {
+        startLocation,
+        destination,
+        routeCoordinates,
+        distance,
+        duration,
+        tripDate,
+        startTime,
+        endTime,
+        isStarted,
+        status, // e.g. “scheduled” | “started” | “completed”
+        currentLocation, // { lat, lng }  – use only for occasional update
+      } = req.body;
+
+      const trip = await trips.findById(tripId);
+
+      if (!trip) {
+        let response = error_function({
+          status: 404,
+          message: "Trip not found",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+
+      // Prevent updates if trip is completed
+      if (trip.status === "completed") {
+        let response = error_function({
+          status: 403,
+          message: "Trip is already completed. Updates are not allowed",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+
+      // Prevent updating startLocation if trip has already started
+      if (trip.status === "started" && trip.isStarted && startLocation) {
+        let response = error_function({
+          status: 403,
+          message: "Cannot update start location after the trip has started",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+
+      const update = {};
+
+      if (tripDate) update.tripDate = tripDate; // YYYY-MM-DD
+      if (startTime) update.startTime = startTime; // HH:mm
+      if (endTime) update.endTime = endTime;
+      if (status) update.status = status;
+      if (isStarted) update.isStarted = isStarted;
+
+      // 2. locations
+      if (startLocation) update.startLocation = startLocation;
+      if (destination) update.destination = destination;
+
+      // 3. route + metrics
+      if (routeCoordinates) {
+        update.routeCoordinates = routeCoordinates;
+        // keep GeoJSON in sync
+        update.routeGeoJSON = {
+          type: "LineString",
+          coordinates: routeCoordinates.map((p) => [p.lng, p.lat]),
+        };
+      }
+      if (distance) update.distance = distance;
+      if (duration) update.duration = duration;
+
+      // 4. occasional location overwrite
+      if (currentLocation && currentLocation.lat && currentLocation.lng) {
+        update.currentLocation = {
+          type: "Point",
+          coordinates: [currentLocation.lng, currentLocation.lat],
+        };
+      }
+
+      const updatedTrip = await trips.findByIdAndUpdate(
+        tripId,
+        { $set: update },
+        { new: true, runValidators: true } // return modified document & validate
+      );
+
+      if (updatedTrip) {
+        let response = success_function({
+          status: 200,
+          data: updatedTrip,
+          message: "Trip updated successfully",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = error_function({
+          status: 404,
+          message: "Trip not found",
+        });
+        return res.status(response.statusCode).send(response);
+      }
     } else {
       let response = error_function({
         status: 400,
@@ -371,6 +510,83 @@ exports.getAllTrips = async function (req, res) {
       return;
     } else {
       console.log("Trips records fetching error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.updateTripLocation = async function (req, res) {
+  try {
+    const { errors, isValid } = tripsLocationUpdateValidator(req.body);
+
+    if (isValid) {
+      const tripId = req.params.tripId;
+      const lat = req.body.lat;
+      const lng = req.body.lng;
+
+      const updatedTrip = await trips.findByIdAndUpdate(
+        tripId,
+        {
+          $set: {
+            currentLocation: {
+              type: "Point",
+              coordinates: [parseFloat(lng), parseFloat(lat)],
+            },
+            lastUpdated: new Date(),
+          },
+        },
+        {
+          new: true,
+        }
+      );
+
+      if (!updatedTrip) {
+        let response = error_function({
+          status: 404,
+          message: "Trip not found",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = success_function({
+          status: 200,
+          data: {
+            tripId: updatedTrip._id,
+            currentLocation: updatedTrip.currentLocation,
+            updatedAt: updatedTrip.lastUpdated,
+          },
+          message: "Location updated successfully",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+    } else {
+      let response = error_function({
+        status: 400,
+        message: "Validation Failed",
+      });
+      response.errors = errors;
+
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Trip location update error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",

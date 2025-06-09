@@ -30,7 +30,7 @@ const users = new mongoose.Schema({
     },
     user_type : {
         type : String,
-        enum : ['customer','driver'], //restrict to only valid roles
+        enum : ['customer','driver','admin'], //restrict to only valid roles
         default : "customer",
     },
     password : {
