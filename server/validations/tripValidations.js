@@ -13,6 +13,9 @@ exports.tripValidator = function (data) {
       : "";
     data.distance = !isEmpty(data.distance) ? data.distance : "";
     data.duration = !isEmpty(data.duration) ? data.duration : "";
+    data.tripDate = !isEmpty(data.tripDate) ? data.tripDate : "";
+    data.startTime = !isEmpty(data.startTime) ? data.startTime : "";
+    data.endTime = !isEmpty(data.endTime) ? data.endTime : "";
 
     //Check if coordinate is valid
     const isValidLatLng = (point) =>
@@ -106,6 +109,21 @@ exports.tripValidator = function (data) {
         typeof data.duration.text !== "string"
       ) {
         errors.duration = "Invalid duration format";
+      }
+
+      //Validating tripDate
+      if(isEmpty(data.tripDate)) {
+        errors.tripDate = "Trip date is required";
+      }
+
+      //Validating startTime
+      if(isEmpty(data.startTime)) {
+        errors.startTime = "Trip start time is required";
+      }
+
+      //Validating endTime
+      if(isEmpty(data.endTime)) {
+        errors.endTime = "Trip end time is required";
       }
     }
 

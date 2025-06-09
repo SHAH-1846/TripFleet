@@ -41,10 +41,29 @@ const trips = new mongoose.Schema(
       value : Number, // in meters
       text : String, // readable, e.g., "120 km"
     },
+
     duration: {
       value : Number, // in seconds
       text : String, // e.g., "2 hours 15 mins"
     },
+
+    isStarted : {
+      type : Boolean,
+      default : false,
+    },
+    
+    actualStartTime : Date,
+    actualEndTime : Date,
+
+    currentLocation : {
+      type : {type : String, default : 'Point'},
+      coordinates : [Number] //[lng, lat]
+    },
+
+    tripDate : Date,
+    startTime : String,
+    endTime : String,
+
   },
   {
     timestamps: true,
