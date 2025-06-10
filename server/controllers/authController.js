@@ -11,8 +11,6 @@ exports.login = async function (req, res) {
     let { errors, isValid, user } = await loginValidator(req.body);
 
     if (isValid) {
-      console.log("user : ", user);
-
       let access_token = jwt.sign(
         { user_id: user._id },
         process.env.PRIVATE_KEY,

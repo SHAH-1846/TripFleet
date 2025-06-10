@@ -1,0 +1,164 @@
+[{
+  "_id": {
+    "$oid": "683dc53cb7a00d2b151ff805"
+  },
+  "firstName": "Jo",
+  "lastName": "Do",
+  "email": "ji@gamil.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "customer",
+  "password": "$2b$10$Iky9NCHxXmIsdRvPKoBATecQv5kLppjJKWJoT8bmXM2p4AekpXpL.",
+  "createdAt": {
+    "$date": "2025-06-02T15:37:32.873Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683dc57ab7a00d2b151ff807"
+  },
+  "firstName": "Jane",
+  "lastName": "Robert",
+  "email": "ji@gamil.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "driver",
+  "password": "$2b$10$cBbffEO2Phc8B30Ls9zT4e.P87Xn./Flz3P0fXYRS0QhV2.tJfKxC",
+  "createdAt": {
+    "$date": "2025-06-02T15:38:34.016Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683e8490965e0efdffba4f2b"
+  },
+  "firstName": "Robert",
+  "lastName": "Doe",
+  "email": "ji12@gamil.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "admin",
+  "password": "$2b$10$MFRwaFkBKOM8J54hsUz7pen56vWEefze48cTxiEKbGg2nP4NORJuy",
+  "createdAt": {
+    "$date": "2025-06-03T05:13:52.776Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683e85d77b008a386ae53df5"
+  },
+  "firstName": "Mark",
+  "lastName": "Weins",
+  "email": "ji12123@gamil.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "customer",
+  "password": "$2b$10$BQmKTaoKPBikSlP2Gt4KkeFc1a.lllZIDeZRN5qjVZfam8p7EKvM6",
+  "createdAt": {
+    "$date": "2025-06-03T05:19:19.224Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683e85f47b008a386ae53df8"
+  },
+  "firstName": "hi",
+  "lastName": "hi",
+  "email": "jsitmawnnbtpvwfxbe@fxavaj.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "driver",
+  "password": "$2b$10$37USpKgNO9yXd1iMO./Uhubn9jWAHTeA4/23iWxSZqXEx0Spn3p.a",
+  "createdAt": {
+    "$date": "2025-06-03T05:19:48.520Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683eb8c0264a7363e2391c9f"
+  },
+  "firstName": "hi",
+  "lastName": "hi",
+  "email": "sifib95676@jeanssi.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "admin",
+  "password": "$2b$10$xsvlSDXji.Z6GYXWJUnvHuvXYWDBUaApNSZZm.2fBA6iYgM81DVlS",
+  "createdAt": {
+    "$date": "2025-06-03T08:56:32.175Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683ec2f37c03b473c401ffea"
+  },
+  "firstName": "Hakeem",
+  "lastName": "Shah",
+  "email": "hakeem@gmail.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "customer",
+  "password": "$2b$10$Hxw3MCWO6QrvBLJgCvfV2OfTvPObQjgh5gWCRqryTlgiBO44x1Dd2",
+  "createdAt": {
+    "$date": "2025-06-03T09:40:03.921Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.170Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "683fd7b0d8ec489c17cca253"
+  },
+  "firstName": "Hakeem",
+  "lastName": "Shah",
+  "email": "hakeemshah@gmail.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "driver",
+  "password": "$2b$10$.5QosbypFrdfJFeOD3sZf.9dUwRAdeEUbUS8pOBOzrjro/BYk7rQ2",
+  "createdAt": {
+    "$date": "2025-06-04T05:20:48.334Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.152Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "684012baca79f3ca865a37e0"
+  },
+  "firstName": "HAKEEM",
+  "lastName": "SHAH",
+  "googleId": "107492298753065713367",
+  "email": "hakeemshah1206@gmail.com",
+  "emailVerified": false,
+  "emailVerifiedAt": null,
+  "user_type": "admin",
+  "password": "$2b$10$ttEpaoqpln.m4qiJ.DUcf.buRE/eWlwZ0sKnPZeI6XTeK3nrmRFCm",
+  "createdAt": {
+    "$date": "2025-06-04T09:32:42.693Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-10T11:03:10.162Z"
+  },
+  "__v": 0
+}]

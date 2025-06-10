@@ -9,8 +9,9 @@ const setAccessControl = (access_type) => {
     }
 }
 
-
 router.post('/', setAccessControl('*'), userController.register);
-router.get('/', setAccessControl('1') , userController.getRegisteredUsers);
+router.put('/', setAccessControl('*'), userController.updateUser);
+router.get('/', setAccessControl('*') , userController.getRegisteredUsers);
+router.get('/userTypes', setAccessControl('*'), userController.getUserTypes);
 
 module.exports = router;

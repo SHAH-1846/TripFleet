@@ -1,4 +1,5 @@
 const users = require("../db/models/users");
+const jwt = require("jsonwebtoken");
 const trips = require("../db/models/trips");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
@@ -26,6 +27,26 @@ exports.createTrip = async function (req, res) {
       const tripDate = req.body.tripDate;
       const startTime = req.body.startTime;
       const endTime = req.body.endTime;
+      let user_id;
+
+      const authHeader = req.headers["authorization"]
+        ? req.headers["authorization"]
+        : null;
+      const token = authHeader ? authHeader.split(" ")[1] : null;
+
+      //verifying token
+      jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
+        if (err) {
+          let response = error_function({
+            status: 401,
+            message: err.message,
+          });
+          res.status(401).send(response);
+          return;
+        } else {
+          user_id = decoded.user_id;
+        }
+      });
 
       // Format routeCoordinates as GeoJSON LineString
       const geoCoordinates = routeCoordinates.map((point) => [
@@ -42,6 +63,7 @@ exports.createTrip = async function (req, res) {
         ],
       };
 
+      console.log("user_id : ", user_id);
       const trip = new trips({
         startLocation,
         destination,
@@ -57,6 +79,7 @@ exports.createTrip = async function (req, res) {
         startTime,
         endTime,
         isStarted: false,
+        user: user_id,
       });
 
       await trip.save();
@@ -237,6 +260,40 @@ exports.updatedTrip = async function (req, res) {
 
 exports.getAllTrips = async function (req, res) {
   try {
+
+     const { tripId, userId } = req.query;
+      let tripDatas;
+
+    if (tripId && userId) {
+      tripDatas = await trips
+        .findOne({ _id: tripId, user: userId })
+        .populate("user", "-password -__v");
+    } else if (tripId) {
+      tripDatas = await trips
+        .findOne({ _id: tripId })
+        .populate("user", "-password -__v");
+    } else if (userId) {
+      tripDatas = await trips
+        .findOne({ user: userId })
+        .populate("user", "-password -__v");
+    }
+
+    if(tripDatas) {
+      let response = success_function({
+        status : 200,
+        data : tripDatas,
+        message : "Trip records retrieved successfully ",
+      });
+      return res.status(response.statusCode).send(response);
+    }else {
+      let response = success_function({
+        status : 404,
+        message : "Trip record not fouond",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+
     const start = req.query.start;
     const destination = req.query.destination;
 
@@ -256,6 +313,12 @@ exports.getAllTrips = async function (req, res) {
 
     // const currentLat = req.query.currentLat; //Actually stored in DB
     // const currentLng = req.query.currentLng; //Actually stored in DB
+
+    const count = Number(await trips.countDocuments());
+    const pageNumber = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || count;
+    const keyword = req.query.keyword;
+
     const filters = [];
 
     // Add filter by tripDate
@@ -269,6 +332,15 @@ exports.getAllTrips = async function (req, res) {
           $gte: tripDate,
           $lt: nextDay,
         },
+      });
+    }
+
+    if (keyword) {
+      filters.push({
+        $or: [
+          { "startLocation.address": { $regex: keyword, $options: "i" } },
+          { "destination.address": { $regex: keyword, $options: "i" } },
+        ],
       });
     }
 
@@ -375,18 +447,23 @@ exports.getAllTrips = async function (req, res) {
 
     // Step 1: Find trips near pickup point
     if (pickupLat && pickupLng) {
-      const pickupNearbyTrips = await trips.find({
-        routeGeoJSON: {
-          $near: {
-            $geometry: {
-              type: "Point",
-              coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)],
+      const pickupNearbyTrips = await trips
+        .find({
+          routeGeoJSON: {
+            $near: {
+              $geometry: {
+                type: "Point",
+                coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)],
+              },
+              $maxDistance: parseInt(radius),
             },
-            $maxDistance: parseInt(radius),
           },
-        },
-        ...(filters.length ? { $and: filters } : {}),
-      });
+          ...(filters.length ? { $and: filters } : {}),
+        })
+        .populate("user", "-password -__v")
+        .sort({ _id: -1 })
+        .skip(pageSize * (pageNumber - 1))
+        .limit(pageSize);
 
       // Step 2: Filter those that also pass near dropoff point
       if (dropoffLat && dropoffLng) {
@@ -408,22 +485,33 @@ exports.getAllTrips = async function (req, res) {
       }
     } else if (dropoffLat && dropoffLng) {
       // Only dropoff provided
-      const dropoffNearbyTrips = await trips.find({
-        routeGeoJSON: {
-          $near: {
-            $geometry: {
-              type: "Point",
-              coordinates: [parseFloat(dropoffLng), parseFloat(dropoffLat)],
+      const dropoffNearbyTrips = await trips
+        .find({
+          routeGeoJSON: {
+            $near: {
+              $geometry: {
+                type: "Point",
+                coordinates: [parseFloat(dropoffLng), parseFloat(dropoffLat)],
+              },
+              $maxDistance: parseInt(radius),
             },
-            $maxDistance: parseInt(radius),
           },
-        },
-        ...(filters.length ? { $and: filters } : {}),
-      });
+          ...(filters.length ? { $and: filters } : {}),
+        })
+        .populate("user", "-password -__v")
+        .sort({ _id: -1 })
+        .skip(pageSize * (pageNumber - 1))
+        .limit(pageSize);
+
       tripsData = dropoffNearbyTrips;
     } else {
       // No geo filtering
-      tripsData = await trips.find(filters.length > 0 ? { $and: filters } : {});
+      tripsData = await trips
+        .find(filters.length > 0 ? { $and: filters } : {})
+        .populate("user", "-password -__v")
+        .sort({ _id: -1 })
+        .skip(pageSize * (pageNumber - 1))
+        .limit(pageSize);
     }
 
     // const tripsData = await trips.find(filters.length > 0 ? { $and: filters } : {});
@@ -481,9 +569,22 @@ exports.getAllTrips = async function (req, res) {
         };
       });
 
+      let count = Number(
+        await trips.countDocuments(
+          filters.length > 0 ? { $and: filters } : null
+        )
+      );
+      let totalPages = Math.ceil(count / pageSize);
+      let data = {
+        count: count,
+        totalPages,
+        currentPage: pageNumber,
+        datas: tripsData,
+      };
+
       let response = success_function({
         status: 200,
-        data: newDatas,
+        data,
         message: "Trip records retrieved successfully",
       });
       res.status(response.statusCode).send(response);
@@ -519,6 +620,7 @@ exports.getAllTrips = async function (req, res) {
     }
   }
 };
+
 
 exports.updateTripLocation = async function (req, res) {
   try {

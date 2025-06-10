@@ -1,9 +1,13 @@
 const validator = require("validator");
 const isEmpty = require("./is_empty");
 const isDisposable = require("is-disposable-email");
-const isDisposableEmail = require('./email-validations/emailValidations').isDisposableEmail;
-const isTemporaryEmail = require('./email-validations/emailValidations').isTemporaryEmail;
+const isDisposableEmail =
+  require("./email-validations/emailValidations").isDisposableEmail;
+const isTemporaryEmail =
+  require("./email-validations/emailValidations").isTemporaryEmail;
 const users = require("../db/models/users");
+const { Types } = require("mongoose");
+const user_types = require("../db/models/user_types");
 
 exports.registrationValidator = async function (data) {
   try {
@@ -41,7 +45,6 @@ exports.registrationValidator = async function (data) {
         email: { $regex: data.email, $options: "i" },
       });
 
-
       if (validator.isEmpty(data.email)) {
         errors.email = "Email is required";
       } else if (!validator.isLength(data.email, { min: 2, max: 30 })) {
@@ -66,8 +69,18 @@ exports.registrationValidator = async function (data) {
       } else if (data.user_type === "admin") {
         errors.user_type =
           "Admin accounts cannot be created through public registration";
-      } else if (data.user_type !== "customer" && data.user_type !== "driver") {
-        errors.user_type = "User type must be either 'customer' or 'driver'";
+      } else if (!Types.ObjectId.isValid(data.user_type)) {
+        errors.user_type = "User type must be a valid MongoDB ObjectId";
+      } else {
+        const userType = await user_types.findById(data.user_type);
+        if (!userType) {
+          errors.user_type = "User type does not exist";
+        } else if (userType.name === "admin") {
+          errors.user_type =
+            "Admin accounts cannot be created through public registration";
+        } else if (userType.name !== "customer" && userType.name !== "driver") {
+          errors.user_type = 'User type must be either "customer" or "driver"';
+        }
       }
 
       //Validating Password
@@ -110,5 +123,44 @@ exports.registrationValidator = async function (data) {
   } catch (error) {
     console.log("Registration Validation error : ", error);
     return;
+  }
+};
+
+exports.updateValidator = function (data) {
+  try {
+    let errors = {};
+
+    data = !isEmpty(data) ? data : "";
+    data.firstName = !isEmpty(data.firstName) ? data.firstName : "";
+    data.lastName = !isEmpty(data.lastName) ? data.lastName : "";
+
+    if (isEmpty(data)) {
+      errors.data = "Please complete all required fields to continue";
+    } else {
+      if (data.firstName) {
+        //Validating FirstName
+        if (validator.isEmpty(data.firstName)) {
+          errors.firstName = "First Name is required";
+        } else if (!validator.isLength(data.firstName, { min: 2, max: 30 })) {
+          errors.firstName = "First Name must be between 2 and 30 charactors";
+        }
+      }
+
+      if (data.lastName) {
+        //Validating LastName
+        if (validator.isEmpty(data.lastName)) {
+          errors.lastName = "Last Name is required";
+        } else if (!validator.isLength(data.lastName, { min: 2, max: 30 })) {
+          errors.lastName = "Last Name must be between 2 and 30 charactors";
+        }
+      }
+    }
+
+    return {
+      errors,
+      isValid: isEmpty(errors),
+    };
+  } catch (error) {
+    console.log("User update validation error : ", error);
   }
 };
