@@ -9,7 +9,9 @@
     "ApplyUserTypesMigration": "node db/migrations/user_type_migration.js up",
     "RevertUserTypesMigration": "node db/migrations/user_type_migration.js down",
     "seed:user-types": "node db/seeders/userTypeSeeder.js up",
-    "rollback:user-types": "node db/seeders/userTypeSeeder.js down"
+    "rollback:user-types": "node db/seeders/userTypeSeeder.js down",
+    "seed:admins": "node db/seeders/adminSeeder.js up",
+    "rollback:admins": "node db/seeders/adminSeeder.js down"
   },
   "author": "",
   "license": "ISC",

@@ -1,10 +1,9 @@
-// seeders/userTypeSeeder.js
 const mongoose = require('mongoose');
 const UserType = require('../models/user_types');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const MONGO_URI = process.env.MONGODB_URI; // Replace with actual DB URI
+const MONGO_URI = process.env.MONGODB_URI;
 
 const userTypes = [
   {
