@@ -6,8 +6,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "ApplyUserTypesMigration" : "node db/migrations/user_type_migration.js up",
-    "RevertUserTypesMigration" : "node db/migrations/user_type_migration.js down"
+    "ApplyUserTypesMigration": "node db/migrations/user_type_migration.js up",
+    "RevertUserTypesMigration": "node db/migrations/user_type_migration.js down",
+    "seed:user-types": "node db/seeders/userTypeSeeder.js up",
+    "rollback:user-types": "node db/seeders/userTypeSeeder.js down"
   },
   "author": "",
   "license": "ISC",
