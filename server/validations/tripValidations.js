@@ -1,5 +1,7 @@
 const validator = require("validator");
 const isEmpty = require("./is_empty");
+const trip_status = require("../db/models/trip_status");
+const { Types } = require("mongoose");
 
 //Check if coordinate is valid
 const isValidLatLng = (point) =>
@@ -167,7 +169,7 @@ exports.tripsLocationUpdateValidator = function (data) {
   }
 };
 
-exports.tripsUpdateValidator = function (data) {
+exports.tripsUpdateValidator = async function (data) {
   try {
     let errors = {};
 
@@ -320,8 +322,20 @@ exports.tripsUpdateValidator = function (data) {
 
       //Validating status
       if (data.status) {
-        if (data.status !== "started" && data.user_type !== "completed") {
-          errors.status = "Status must be either 'started' or 'completed'";
+        if (!Types.ObjectId.isValid(data.status)) {
+          errors.status = "Status must be a valid MongoDB ObjectId";
+        } else {
+          const status = await trip_status.findById(data.status);
+          if (!status) {
+            errors.status = "Trip status does not exist";
+          } else if (
+            status.name !== "scheduled" &&
+            status.name !== "started" &&
+            status.name !== "completed"
+          ) {
+            errors.status =
+              "Trip status must be one of: 'scheduled', 'started', or 'completed'.";
+          }
         }
       }
 
@@ -341,5 +355,39 @@ exports.tripsUpdateValidator = function (data) {
     };
   } catch (error) {
     console.log("Error updating trips : ", error);
+  }
+};
+
+exports.tripsStatusUpdateValidator = async function (data) {
+  try {
+    let errors = {};
+
+    data = !isEmpty(data) ? data : "";
+    data.status = !isEmpty(data.status) ? data.status : "";
+
+    if (isEmpty(data)) {
+      errors.data = "Please complete all required fields to continue";
+    } else {
+      if (isEmpty(data.status)) {
+        errors.status = "Status is required";
+      } else if (!Types.ObjectId.isValid(data.status)) {
+        errors.status = "Invalid status ID format";
+      } else {
+        const status = await trip_status.findOne({
+          _id: data.status,
+          isActive: true,
+        });
+        if (!status) {
+          errors.status = "Trip status not found or inactive";
+        }
+      }
+    }
+
+    return {
+      errors,
+      isValid : isEmpty(errors),
+    }
+  } catch (error) {
+    console.log("Error validating trip status : ", error);
   }
 };

@@ -7,6 +7,8 @@ const registrationValidator =
   require("../validations/userValidations").registrationValidator;
 const updateValidator =
   require("../validations/userValidations").updateValidator;
+const updateUserTypeValidator =
+  require("../validations/userValidations").updateUserTypeValidator;
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -125,7 +127,6 @@ exports.getRegisteredUsers = async function (req, res) {
       }
     }
 
-
     const count = Number(await users.countDocuments());
     const pageNumber = Number(req.query.page) || 1;
     const pageSize = Number(req.query.pageSize) || count;
@@ -141,10 +142,10 @@ exports.getRegisteredUsers = async function (req, res) {
       });
     }
 
-    if(userTypeId) {
+    if (userTypeId) {
       filters.push({
-        user_type : userTypeId,
-      })
+        user_type: userTypeId,
+      });
     }
 
     let usersData = await users
@@ -242,6 +243,64 @@ exports.getUserTypes = async function (req, res) {
       return;
     } else {
       console.log("User types listing error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.updateuserTypes = async function (req, res) {
+  try {
+    const { isValid, errors } = await updateUserTypeValidator(req.body);
+
+    if (isValid) {
+      // Check if user exists
+      const user = await users.findById(req.params.id);
+      if (!user){
+        let response = error_function({
+          status : 404,
+          message : "User not found",
+        });
+        return res.status(response.statusCode).send(response);
+      }else {
+
+      // Update user_type
+      user.user_type = req.body.userType;
+      await user.save();
+
+      let response = success_function({
+        status : 200,
+        data : user,
+        message : "User type updated successfully",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+    } else {
+      let response = error_function({
+        status: 400,
+        message: "Validation failed",
+      });
+      response.errors = errors;
+      return res.status(response.statusCode).send(response);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("User types updation error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",

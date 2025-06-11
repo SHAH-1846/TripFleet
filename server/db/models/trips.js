@@ -57,9 +57,9 @@ const trips = new mongoose.Schema(
     },
 
     status: {
-      type: String,
-      default: "scheduled",
-      enum: ["scheduled", "started", "completed"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "trip_status",
+      default: "684942f5ff32840ef8e726f0",
     },
 
     actualStartTime: Date,

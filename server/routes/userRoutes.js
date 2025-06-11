@@ -13,5 +13,6 @@ router.post('/', setAccessControl('*'), userController.register);
 router.put('/', setAccessControl('*'), userController.updateUser);
 router.get('/', setAccessControl('*') , userController.getRegisteredUsers);
 router.get('/userTypes', setAccessControl('*'), userController.getUserTypes);
+router.put('/userTypes/:id', setAccessControl('*'), userController.updateuserTypes);
 
 module.exports = router;

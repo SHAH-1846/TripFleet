@@ -1,6 +1,7 @@
 const users = require("../db/models/users");
 const jwt = require("jsonwebtoken");
 const trips = require("../db/models/trips");
+const trip_status = require("../db/models/trip_status");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const tripValidator = require("../validations/tripValidations").tripValidator;
@@ -8,6 +9,8 @@ const tripsUpdateValidator =
   require("../validations/tripValidations").tripsUpdateValidator;
 const tripsLocationUpdateValidator =
   require("../validations/tripValidations").tripsLocationUpdateValidator;
+const tripsStatusUpdateValidator =
+  require("../validations/tripValidations").tripsStatusUpdateValidator;
 const getDistanceFromLatLonInMeters =
   require("../utils/tripUtilities").getDistanceFromLatLonInMeters;
 const dotenv = require("dotenv");
@@ -63,7 +66,6 @@ exports.createTrip = async function (req, res) {
         ],
       };
 
-      console.log("user_id : ", user_id);
       const trip = new trips({
         startLocation,
         destination,
@@ -126,7 +128,7 @@ exports.createTrip = async function (req, res) {
 
 exports.updatedTrip = async function (req, res) {
   try {
-    const { errors, isValid } = tripsUpdateValidator(req.body);
+    const { errors, isValid } = await tripsUpdateValidator(req.body);
 
     if (isValid) {
       const tripId = req.params.tripId;
@@ -230,7 +232,6 @@ exports.updatedTrip = async function (req, res) {
         message: "Validation Failed",
       });
       response.errors = errors;
-
       res.status(response.statusCode).send(response);
       return;
     }
@@ -260,42 +261,70 @@ exports.updatedTrip = async function (req, res) {
 
 exports.getAllTrips = async function (req, res) {
   try {
-
-     const { tripId, userId } = req.query;
-      let tripDatas;
+    const { tripId, userId } = req.query;
 
     if (tripId && userId) {
-      tripDatas = await trips
+      let tripDatas = await trips
         .findOne({ _id: tripId, user: userId })
-        .populate("user", "-password -__v");
+        .populate("user status", "-password -__v");
+
+      if (tripDatas) {
+        let response = success_function({
+          status: 200,
+          data: tripDatas,
+          message: "Trip records retrieved successfully ",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = success_function({
+          status: 404,
+          message: "Trip record not fouond",
+        });
+        return res.status(response.statusCode).send(response);
+      }
     } else if (tripId) {
-      tripDatas = await trips
+      let tripDatas = await trips
         .findOne({ _id: tripId })
-        .populate("user", "-password -__v");
+        .populate("user status", "-password -__v");
+
+      if (tripDatas) {
+        let response = success_function({
+          status: 200,
+          data: tripDatas,
+          message: "Trip records retrieved successfully ",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = success_function({
+          status: 404,
+          message: "Trip record not fouond",
+        });
+        return res.status(response.statusCode).send(response);
+      }
     } else if (userId) {
-      tripDatas = await trips
+      let tripDatas = await trips
         .findOne({ user: userId })
-        .populate("user", "-password -__v");
-    }
+        .populate("user status", "-password -__v");
 
-    if(tripDatas) {
-      let response = success_function({
-        status : 200,
-        data : tripDatas,
-        message : "Trip records retrieved successfully ",
-      });
-      return res.status(response.statusCode).send(response);
-    }else {
-      let response = success_function({
-        status : 404,
-        message : "Trip record not fouond",
-      });
-      return res.status(response.statusCode).send(response);
+      if (tripDatas) {
+        let response = success_function({
+          status: 200,
+          data: tripDatas,
+          message: "Trip records retrieved successfully ",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = success_function({
+          status: 404,
+          message: "Trip record not fouond",
+        });
+        return res.status(response.statusCode).send(response);
+      }
     }
-
 
     const start = req.query.start;
     const destination = req.query.destination;
+    const status = req.query.status;
 
     //For finding trips passing near this location
     const lat = req.query.lat;
@@ -342,6 +371,12 @@ exports.getAllTrips = async function (req, res) {
           { "destination.address": { $regex: keyword, $options: "i" } },
         ],
       });
+    }
+
+    if(status) {
+      filters.push({
+        status
+      })
     }
 
     // Add startTime filter (if trip starts later than or at this time)
@@ -460,7 +495,7 @@ exports.getAllTrips = async function (req, res) {
           },
           ...(filters.length ? { $and: filters } : {}),
         })
-        .populate("user", "-password -__v")
+        .populate("user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -498,7 +533,7 @@ exports.getAllTrips = async function (req, res) {
           },
           ...(filters.length ? { $and: filters } : {}),
         })
-        .populate("user", "-password -__v")
+        .populate("user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -508,7 +543,7 @@ exports.getAllTrips = async function (req, res) {
       // No geo filtering
       tripsData = await trips
         .find(filters.length > 0 ? { $and: filters } : {})
-        .populate("user", "-password -__v")
+        .populate("user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -547,7 +582,6 @@ exports.getAllTrips = async function (req, res) {
 
     if (tripsData) {
       let newDatas = tripsData.map((trip) => {
-        console.log("trip : ", trip);
         return {
           ...trip._doc,
           pickup: {
@@ -621,7 +655,6 @@ exports.getAllTrips = async function (req, res) {
   }
 };
 
-
 exports.updateTripLocation = async function (req, res) {
   try {
     const { errors, isValid } = tripsLocationUpdateValidator(req.body);
@@ -689,6 +722,105 @@ exports.updateTripLocation = async function (req, res) {
       return;
     } else {
       console.log("Trip location update error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.updateTripStatus = async function (req, res) {
+  try {
+    const { isValid, errors } = await tripsStatusUpdateValidator(req.body);
+
+    if (isValid) {
+      const { status } = req.body;
+
+      // Update trip with the new status ID
+      const trip = await trips
+        .findByIdAndUpdate(
+          req.params.tripId,
+          {
+            status,
+            updatedAt: new Date(),
+          },
+          { new: true }
+        )
+        .populate("status");
+
+      if (!trip) {
+        let response = error_function({
+          status: 404,
+          message: "Trip not found",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = success_function({
+          status: 200,
+          data: trip,
+          message: "Trip status updated successfully",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+    } else {
+      let response = error_function({
+        status: 400,
+        message: "Validation failed",
+      });
+      response.errors = errors;
+      return res.status(response.statusCode).send(response);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Trip status updation error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.getTripStatus = async function (req, res) {
+  try {
+     const statuses = await trip_status.find({ isActive: true }).sort({ createdAt: 1 });
+
+     let response = success_function({
+      status : 200,
+      data : statuses,
+      message : "Trip statuses fetched successfully",
+     });
+     return res.status(response.statusCode).send(response);
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Trip status fetching error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",

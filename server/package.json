@@ -8,10 +8,15 @@
     "dev": "nodemon app.js",
     "ApplyUserTypesMigration": "node db/migrations/user_type_migration.js up",
     "RevertUserTypesMigration": "node db/migrations/user_type_migration.js down",
+    "ApplyTripStatusMigration" : "node db/migrations/trip_status_migration.js up",
+    "RevertTripStatusMigration" : "node db/migrations/trip_status_migration.js down",
+    "VerifyTripStatusMigration" : "node db/migrations/trip_status_migration.js verify",
     "seed:user-types": "node db/seeders/userTypeSeeder.js up",
     "rollback:user-types": "node db/seeders/userTypeSeeder.js down",
     "seed:admins": "node db/seeders/adminSeeder.js up",
-    "rollback:admins": "node db/seeders/adminSeeder.js down"
+    "rollback:admins": "node db/seeders/adminSeeder.js down",
+    "seed:trip-status" : "node db/seeders/tripStatusSeeder.js up",
+    "rollback:trip-status" : "node db/seeders/tripStatusSeeder.js down"
   },
   "author": "",
   "license": "ISC",

@@ -164,3 +164,38 @@ exports.updateValidator = function (data) {
     console.log("User update validation error : ", error);
   }
 };
+
+exports.updateUserTypeValidator = async function (data) {
+  try {
+    let errors = {};
+
+    data = !isEmpty(data) ? data : "";
+    data.userType = !isEmpty(data.userType) ? data.userType : "";
+
+    if(isEmpty(data)) {
+      errors.data = "Please complete all required fields to continue";
+    }else {
+        if(isEmpty(data.userType)) {
+          errors.userType = "User type is required";
+        }else if(!Types.ObjectId.isValid(data.userType)) {
+          errors.userType = "Invalid user type format";
+        }else {
+          const user_type = await user_types.findOne({
+            _id : data.userType,
+            isActive : true,
+          });
+          if(!user_type) {
+            errors.userType = "User type not found or inactive";
+          }
+        }
+    }
+
+    return {
+      errors,
+      isValid : isEmpty(errors),
+    }
+    
+  } catch (error) {
+    console.log("Error updating user type : ", error);
+  }
+}
