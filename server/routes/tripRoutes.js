@@ -12,6 +12,7 @@ const setAccessControl = (access_type) => {
 router.post('/',setAccessControl('*'), tripController.createTrip);
 router.put('/:tripId', tripController.updatedTrip);
 router.get('/', tripController.getAllTrips);
+router.get('/:id/matched-requests', setAccessControl('*'), tripController.getMatchedCustomerRequests);
 router.get('/status', tripController.getTripStatus);
 router.put('/:tripId/location', tripController.updateTripLocation);
 router.put('/status/:tripId', tripController.updateTripStatus);

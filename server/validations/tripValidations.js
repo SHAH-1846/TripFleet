@@ -1,7 +1,10 @@
 const validator = require("validator");
 const isEmpty = require("./is_empty");
+const users = require("../db/models/users");
+const vehicles = require("../db/models/vehicles");
 const trip_status = require("../db/models/trip_status");
 const { Types } = require("mongoose");
+const trips = require("../db/models/trips");
 
 //Check if coordinate is valid
 const isValidLatLng = (point) =>
@@ -12,11 +15,12 @@ const isValidLatLng = (point) =>
   point.lng >= -180 &&
   point.lng <= 180;
 
-exports.tripValidator = function (data) {
+exports.tripValidator = async function (data) {
   try {
     let errors = {};
 
     data = !isEmpty(data) ? data : "";
+    data.vehicle = !isEmpty(data.vehicle) ? data.vehicle : "";
     data.startLocation = !isEmpty(data.startLocation) ? data.startLocation : "";
     data.destination = !isEmpty(data.destination) ? data.destination : "";
     data.routeCoordinates = !isEmpty(data.routeCoordinates)
@@ -31,6 +35,21 @@ exports.tripValidator = function (data) {
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
     } else {
+      //Validating vehicle
+      if (isEmpty(data.vehicle)) {
+        errors.vehicle = "Vehicle is required";
+      } else if (!Types.ObjectId.isValid(data.vehicle)) {
+        errors.vehicle = "Invalid vehicle ID format";
+      } else {
+        const vehicle = await vehicles.findOne({
+          _id: data.vehicle,
+          status: "684bbcb5a9dcd0556d12b2a5",
+        });
+        if (!vehicle) {
+          errors.vehicle = "Vehicle not found or unavailable";
+        }
+      }
+
       //Validating startLocation
       if (isEmpty(data.startLocation)) {
         errors.startLocation = "Start location is required";
@@ -169,11 +188,13 @@ exports.tripsLocationUpdateValidator = function (data) {
   }
 };
 
-exports.tripsUpdateValidator = async function (data) {
+exports.tripsUpdateValidator = async function (data, user_id, tripId) {
   try {
     let errors = {};
 
     data = !isEmpty(data) ? data : "";
+    data.vehicle = !isEmpty(data.vehicle) ? data.vehicle : "";
+
     data.startLocation = !isEmpty(data.startLocation) ? data.startLocation : "";
     data.destination = !isEmpty(data.destination) ? data.destination : "";
     data.routeCoordinates = !isEmpty(data.routeCoordinates)
@@ -194,6 +215,37 @@ exports.tripsUpdateValidator = async function (data) {
     if (isEmpty(data)) {
       errors.data = "Please complete the required fields to continue";
     } else {
+      //Validating user
+      if (!user_id) {
+        errors.user = "Please login to continue";
+      } else if (!Types.ObjectId.isValid(user_id)) {
+        errors.user = "User must be a valid MongoDB ObjectId";
+      } else {
+        const user = await users.findById(user_id);
+        const trip = await trips.findById(tripId);
+        if (!user) {
+          errors.user = "User does not exist";
+        } else if (user.user_type.toString() === "68484d1eefb856d41ac28c55") {
+          errors.user = "Customers cannot update vehicles";
+        }else if (user_id !== trip.user.toString()) {
+          errors.user = "Not allowed";
+        }
+      }
+
+      //Validating vehicle
+      if (data.vehicle) {
+        if (!Types.ObjectId.isValid(data.vehicle)) {
+          errors.vehicle = "Invalid vehicle ID format";
+        } else {
+          const vehicle = await vehicles.findOne({
+            _id: data.vehicle,
+            status: "684bbcb5a9dcd0556d12b2a5",
+          });
+          if (!vehicle) {
+            errors.vehicle = "Vehicle not found or unavailable";
+          }
+        }
+      }
       //Validating startLocation
       if (data.startLocation) {
         if (isEmpty(data.startLocation)) {
@@ -385,8 +437,8 @@ exports.tripsStatusUpdateValidator = async function (data) {
 
     return {
       errors,
-      isValid : isEmpty(errors),
-    }
+      isValid: isEmpty(errors),
+    };
   } catch (error) {
     console.log("Error validating trip status : ", error);
   }

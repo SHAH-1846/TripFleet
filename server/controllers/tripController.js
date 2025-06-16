@@ -1,6 +1,7 @@
 const users = require("../db/models/users");
 const jwt = require("jsonwebtoken");
 const trips = require("../db/models/trips");
+const CustomerRequest = require("../db/models/customer_requests");
 const trip_status = require("../db/models/trip_status");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
@@ -14,14 +15,15 @@ const tripsStatusUpdateValidator =
 const getDistanceFromLatLonInMeters =
   require("../utils/tripUtilities").getDistanceFromLatLonInMeters;
 const dotenv = require("dotenv");
-const { response } = require("express");
+const mongoose = require("mongoose");
 dotenv.config();
 
 exports.createTrip = async function (req, res) {
   try {
-    let { errors, isValid } = tripValidator(req.body);
+    let { errors, isValid } = await tripValidator(req.body);
 
     if (isValid) {
+      const vehicle = req.body.vehicle;
       const startLocation = req.body.startLocation;
       const destination = req.body.destination;
       const routeCoordinates = req.body.routeCoordinates;
@@ -67,6 +69,7 @@ exports.createTrip = async function (req, res) {
       };
 
       const trip = new trips({
+        vehicle,
         startLocation,
         destination,
         routeCoordinates,
@@ -128,11 +131,51 @@ exports.createTrip = async function (req, res) {
 
 exports.updatedTrip = async function (req, res) {
   try {
-    const { errors, isValid } = await tripsUpdateValidator(req.body);
+    let user_id;
+
+    const authHeader = req.headers["authorization"]
+      ? req.headers["authorization"]
+      : null;
+    const token = authHeader ? authHeader.split(" ")[1] : null;
+
+    if (
+      token == null ||
+      token == "null" ||
+      token == "" ||
+      token == "undefined"
+    ) {
+      let response = error_function({
+        status: 400,
+        message: "Please login to continue",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+
+    //verifying token
+    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
+      if (err) {
+        let response = error_function({
+          status: 401,
+          message: err.message,
+        });
+        res.status(401).send(response);
+        return;
+      } else {
+        user_id = decoded.user_id;
+      }
+    });
+
+    const { errors, isValid } = await tripsUpdateValidator(
+      req.body,
+      user_id,
+      req.params.tripId
+    );
 
     if (isValid) {
       const tripId = req.params.tripId;
       const {
+        vehicle,
         startLocation,
         destination,
         routeCoordinates,
@@ -176,6 +219,7 @@ exports.updatedTrip = async function (req, res) {
 
       const update = {};
 
+      if (vehicle) update.vehicle = vehicle;
       if (tripDate) update.tripDate = tripDate; // YYYY-MM-DD
       if (startTime) update.startTime = startTime; // HH:mm
       if (endTime) update.endTime = endTime;
@@ -266,7 +310,7 @@ exports.getAllTrips = async function (req, res) {
     if (tripId && userId) {
       let tripDatas = await trips
         .findOne({ _id: tripId, user: userId })
-        .populate("user status", "-password -__v");
+        .populate("vehicle user status", "-password -__v");
 
       if (tripDatas) {
         let response = success_function({
@@ -285,7 +329,7 @@ exports.getAllTrips = async function (req, res) {
     } else if (tripId) {
       let tripDatas = await trips
         .findOne({ _id: tripId })
-        .populate("user status", "-password -__v");
+        .populate("vehicle user status", "-password -__v");
 
       if (tripDatas) {
         let response = success_function({
@@ -304,7 +348,7 @@ exports.getAllTrips = async function (req, res) {
     } else if (userId) {
       let tripDatas = await trips
         .findOne({ user: userId })
-        .populate("user status", "-password -__v");
+        .populate("vehicle user status", "-password -__v");
 
       if (tripDatas) {
         let response = success_function({
@@ -373,10 +417,10 @@ exports.getAllTrips = async function (req, res) {
       });
     }
 
-    if(status) {
+    if (status) {
       filters.push({
-        status
-      })
+        status,
+      });
     }
 
     // Add startTime filter (if trip starts later than or at this time)
@@ -495,7 +539,7 @@ exports.getAllTrips = async function (req, res) {
           },
           ...(filters.length ? { $and: filters } : {}),
         })
-        .populate("user status", "-password -__v")
+        .populate("vehicle user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -533,7 +577,7 @@ exports.getAllTrips = async function (req, res) {
           },
           ...(filters.length ? { $and: filters } : {}),
         })
-        .populate("user status", "-password -__v")
+        .populate("vehicle user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -543,7 +587,7 @@ exports.getAllTrips = async function (req, res) {
       // No geo filtering
       tripsData = await trips
         .find(filters.length > 0 ? { $and: filters } : {})
-        .populate("user status", "-password -__v")
+        .populate("vehicle user status", "-password -__v")
         .sort({ _id: -1 })
         .skip(pageSize * (pageNumber - 1))
         .limit(pageSize);
@@ -645,6 +689,113 @@ exports.getAllTrips = async function (req, res) {
       return;
     } else {
       console.log("Trips records fetching error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.getMatchedCustomerRequests = async (req, res) => {
+  try {
+    const { id } = req.params; // Trip ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      let response = error_function({
+        status: 400,
+        message: "Invallid trip ID",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    const { status, startDate, endDate } = req.query; // Optional filters
+
+    const trip = await trips.findById(id);
+    if (!trip || !trip.routeGeoJSON) {
+      let response = error_function({
+        status: 404,
+        message: "Trip not found or missing routeGeoJSON",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    // Build common query conditions
+    const baseFilter = {};
+    if (status) {
+      if(!mongoose.Types.ObjectId.isValid(status)) {
+        let response = error_function({
+          status : 400,
+          message : "Invalid status ID",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+      baseFilter.status = status;
+    }
+
+    if (startDate || endDate) {
+      baseFilter.pickupTime = {};
+      if (startDate) baseFilter.pickupTime.$gte = new Date(startDate);
+      if (endDate) baseFilter.pickupTime.$lte = new Date(endDate);
+    }
+
+    // Match customer requests whose pickup or dropoff locations intersect with the trip route
+    const pickupMatches = await CustomerRequest.find({
+      ...baseFilter,
+      "pickupLocation.coordinates": {
+        $geoIntersects: {
+          $geometry: trip.routeGeoJSON,
+        },
+      },
+    }).populate("user status", "-__v -password");
+
+    const dropoffMatches = await CustomerRequest.find({
+      ...baseFilter,
+      "dropoffLocation.coordinates": {
+        $geoIntersects: {
+          $geometry: trip.routeGeoJSON,
+        },
+      },
+    }).populate("user status", "-__v -password");
+
+    const pickupIds = pickupMatches.map((req) => req._id.toString());
+    const dropoffIds = dropoffMatches.map((req) => req._id.toString());
+
+    const both = pickupMatches.filter((req) =>
+      dropoffIds.includes(req._id.toString())
+    );
+    const onlyPickup = pickupMatches.filter(
+      (req) => !dropoffIds.includes(req._id.toString())
+    );
+    const onlyDropoff = dropoffMatches.filter(
+      (req) => !pickupIds.includes(req._id.toString())
+    );
+
+    const response = success_function({
+      status: 200,
+      message: "Customer requests matched successfully",
+      data: {
+        bothLocations: both,
+        onlyPickup,
+        onlyDropoff,
+      },
+    });
+    return res.status(response.statusCode).send(response);
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Error matching customer requests : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
@@ -799,14 +950,16 @@ exports.updateTripStatus = async function (req, res) {
 
 exports.getTripStatus = async function (req, res) {
   try {
-     const statuses = await trip_status.find({ isActive: true }).sort({ createdAt: 1 });
+    const statuses = await trip_status
+      .find({ isActive: true })
+      .sort({ createdAt: 1 });
 
-     let response = success_function({
-      status : 200,
-      data : statuses,
-      message : "Trip statuses fetched successfully",
-     });
-     return res.status(response.statusCode).send(response);
+    let response = success_function({
+      status: 200,
+      data: statuses,
+      message: "Trip statuses fetched successfully",
+    });
+    return res.status(response.statusCode).send(response);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       let response = error_function({

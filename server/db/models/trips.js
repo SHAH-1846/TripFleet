@@ -7,6 +7,11 @@ const trips = new mongoose.Schema(
       ref: "users",
     },
 
+    vehicle : {
+      type : mongoose.Schema.Types.ObjectId,
+      ref : "vehicles",
+    },
+
     startLocation: {
       address: String,
       coordinates: {

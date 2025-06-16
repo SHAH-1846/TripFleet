@@ -19,8 +19,10 @@
     "rollback:trip-status": "node db/seeders/tripStatusSeeder.js down",
     "seed:vehicle-types": "node db/seeders/vehicleTypeSeeder.js up",
     "rollback:vehicle-types": "node db/seeders/vehicleTypeSeeder.js down",
-    "seed:vehicle-status" : "node db/seeders/vehicleStatusSeeder.js up",
-    "rollback:vehicle-status" : "node db/seeders/vehicleStatusSeeder.js down"
+    "seed:vehicle-status": "node db/seeders/vehicleStatusSeeder.js up",
+    "rollback:vehicle-status": "node db/seeders/vehicleStatusSeeder.js down",
+    "seed:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js up",
+    "rollback:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js down"
   },
   "author": "",
   "license": "ISC",
