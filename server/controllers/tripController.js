@@ -5,6 +5,7 @@ const CustomerRequest = require("../db/models/customer_requests");
 const trip_status = require("../db/models/trip_status");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
+const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
 const tripValidator = require("../validations/tripValidations").tripValidator;
 const tripsUpdateValidator =
   require("../validations/tripValidations").tripsUpdateValidator;
@@ -699,6 +700,51 @@ exports.getAllTrips = async function (req, res) {
   }
 };
 
+exports.getMyTrips = async (req, res) => {
+  try {
+    const userId = extractUserIdFromToken(req);
+    if (!userId) {
+      return res
+        .status(401)
+        .send(error_function({ status: 401, message: "Unauthorized" }));
+    }
+
+    const myTrips = await trips
+      .find({ user: userId })
+      .populate("vehicle status", "-__v")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).send(
+      success_function({
+        status: 200,
+        message: "My trips fetched successfully",
+        data: myTrips,
+      })
+    );
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Mytrips error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
 exports.getMatchedCustomerRequests = async (req, res) => {
   try {
     const { id } = req.params; // Trip ID
@@ -724,10 +770,10 @@ exports.getMatchedCustomerRequests = async (req, res) => {
     // Build common query conditions
     const baseFilter = {};
     if (status) {
-      if(!mongoose.Types.ObjectId.isValid(status)) {
+      if (!mongoose.Types.ObjectId.isValid(status)) {
         let response = error_function({
-          status : 400,
-          message : "Invalid status ID",
+          status: 400,
+          message: "Invalid status ID",
         });
         return res.status(response.statusCode).send(response);
       }

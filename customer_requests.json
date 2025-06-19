@@ -1,0 +1,148 @@
+[{
+  "_id": {
+    "$oid": "684fd37af9368076264bb65b"
+  },
+  "user": {
+    "$oid": "684abd64e44f9628b813d37b"
+  },
+  "pickupLocation": {
+    "address": "Madurai, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        78.1198,
+        9.9252
+      ]
+    }
+  },
+  "dropoffLocation": {
+    "address": "Rameswaram, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        79.3129,
+        9.2876
+      ]
+    }
+  },
+  "packageDetails": {
+    "weight": 25,
+    "dimensions": {
+      "length": 50,
+      "width": 30,
+      "height": 20
+    },
+    "description": "Fragile glassware"
+  },
+  "pickupTime": {
+    "$date": "2025-06-10T10:00:00.000Z"
+  },
+  "status": {
+    "$oid": "684da101412825ef8b404711"
+  },
+  "createdAt": {
+    "$date": "2025-06-16T08:19:06.736Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-16T08:19:06.736Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "684fd499f1794cdf5c771763"
+  },
+  "user": {
+    "$oid": "684abd64e44f9628b813d37b"
+  },
+  "pickupLocation": {
+    "address": "Madurai, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        78.1198,
+        9.9252
+      ]
+    }
+  },
+  "dropoffLocation": {
+    "address": "Rameswaram, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        79.3129,
+        9.2876
+      ]
+    }
+  },
+  "packageDetails": {
+    "weight": 25,
+    "dimensions": {
+      "length": 50,
+      "width": 30,
+      "height": 20
+    },
+    "description": "Fragile glassware"
+  },
+  "pickupTime": {
+    "$date": "2025-06-10T10:00:00.000Z"
+  },
+  "status": {
+    "$oid": "684da101412825ef8b404711"
+  },
+  "createdAt": {
+    "$date": "2025-06-16T08:23:53.406Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-16T08:23:53.406Z"
+  },
+  "__v": 0
+},{
+  "_id": {
+    "$oid": "684fe4fac257db843c29178a"
+  },
+  "user": {
+    "$oid": "684abd64e44f9628b813d37b"
+  },
+  "pickupLocation": {
+    "address": "Madurai, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        78.1198,
+        9.9252
+      ]
+    }
+  },
+  "dropoffLocation": {
+    "address": "Rameswaram, Tamil Nadu",
+    "coordinates": {
+      "type": "Point",
+      "coordinates": [
+        79.3129,
+        9.2876
+      ]
+    }
+  },
+  "packageDetails": {
+    "weight": 25,
+    "dimensions": {
+      "length": 50,
+      "width": 30,
+      "height": 20
+    },
+    "description": "Fragile glassware"
+  },
+  "pickupTime": {
+    "$date": "2025-06-10T10:00:00.000Z"
+  },
+  "status": {
+    "$oid": "684da101412825ef8b404711"
+  },
+  "createdAt": {
+    "$date": "2025-06-16T09:33:46.016Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-16T09:33:46.016Z"
+  },
+  "__v": 0
+}]

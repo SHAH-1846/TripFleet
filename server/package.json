@@ -22,7 +22,9 @@
     "seed:vehicle-status": "node db/seeders/vehicleStatusSeeder.js up",
     "rollback:vehicle-status": "node db/seeders/vehicleStatusSeeder.js down",
     "seed:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js up",
-    "rollback:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js down"
+    "rollback:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js down",
+    "seed:bookingStatus" : "node db/seeders/bookingStatusSeeder.js up",
+    "rollback:bookingStatus" : "node db/seeders/bookingStatusSeeder.js down"
   },
   "author": "",
   "license": "ISC",

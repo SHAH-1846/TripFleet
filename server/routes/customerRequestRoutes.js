@@ -10,6 +10,9 @@ const setAccessControl = (access_type) => {
 }
 
 router.post('/', setAccessControl('*'), customerRequestController.createCustomerRequest);
+router.get('/', setAccessControl('*'), customerRequestController.getAllCustomerRequests);
+router.get('/my-customer-requests', setAccessControl('*'), customerRequestController.getMyCustomerRequests);
+router.put('/:customerRequestId', setAccessControl('*'), customerRequestController.updateCustomerRequest);
 router.get('/matched-trips/:id', setAccessControl('*'), customerRequestController.getMatchedTrips);
 router.get('/status',setAccessControl('*'), customerRequestController.getAllCustomerRequestStatuses);
 
