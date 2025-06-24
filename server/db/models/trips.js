@@ -74,7 +74,7 @@ const trips = new mongoose.Schema(
       type: { type: String, default: "Point" },
       coordinates: [Number], //[lng, lat]
     },
-
+    
     lastUpdated: Date,
     tripDate: Date,
     startTime: String,

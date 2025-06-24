@@ -87,7 +87,7 @@ exports.createTrip = async function (req, res) {
         isStarted: false,
         user: user_id,
       });
-
+      
       await trip.save();
       let response = success_function({
         status: 201,

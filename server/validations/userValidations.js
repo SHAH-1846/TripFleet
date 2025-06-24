@@ -6,6 +6,7 @@ const isDisposableEmail =
 const isTemporaryEmail =
   require("./email-validations/emailValidations").isTemporaryEmail;
 const users = require("../db/models/users");
+const images = require("../db/models/images");
 const { Types } = require("mongoose");
 const user_types = require("../db/models/user_types");
 
@@ -17,6 +18,7 @@ exports.registrationValidator = async function (data) {
     data.firstName = !isEmpty(data.firstName) ? data.firstName : "";
     data.lastName = !isEmpty(data.lastName) ? data.lastName : "";
     data.email = !isEmpty(data.email) ? data.email : "";
+    data.image = !isEmpty(data.image) ? data.image : "";
     data.user_type = !isEmpty(data.user_type) ? data.user_type : "";
     data.password = !isEmpty(data.password) ? data.password : "";
     data.confirmPassword = !isEmpty(data.confirmPassword)
@@ -63,6 +65,17 @@ exports.registrationValidator = async function (data) {
         errors.email = "An account with this email already exists";
       }
 
+      //Validating image
+      if (!validator.isEmpty(data.image)) {
+        if (!Types.ObjectId.isValid(data.image)) {
+          errors.image = "Image must be a valid MongoDB ObjectId";
+        } else {
+          const image = await images.findById(data.image);
+          if (!image) {
+            errors.image = "Image does not exist";
+          }
+        }
+      }
       //Validating UserType
       if (validator.isEmpty(data.user_type)) {
         errors.user_type = "User type is required";
@@ -126,17 +139,28 @@ exports.registrationValidator = async function (data) {
   }
 };
 
-exports.updateValidator = function (data) {
+exports.updateValidator = async function (data, user_id) {
   try {
     let errors = {};
 
     data = !isEmpty(data) ? data : "";
     data.firstName = !isEmpty(data.firstName) ? data.firstName : "";
     data.lastName = !isEmpty(data.lastName) ? data.lastName : "";
+    data.profilePicture = !isEmpty(data.profilePicture) ? data.profilePicture : "";
 
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
     } else {
+      // Validate user
+      if (isEmpty(user_id)) {
+        errors.user = "User is required";
+      } else if (!Types.ObjectId.isValid(user_id)) {
+        errors.user = "Invalid user ID";
+      } else {
+        const userExists = await users.findById(user_id);
+        if (!userExists) errors.user = "User not found";
+      }
+
       if (data.firstName) {
         //Validating FirstName
         if (validator.isEmpty(data.firstName)) {
@@ -152,6 +176,23 @@ exports.updateValidator = function (data) {
           errors.lastName = "Last Name is required";
         } else if (!validator.isLength(data.lastName, { min: 2, max: 30 })) {
           errors.lastName = "Last Name must be between 2 and 30 charactors";
+        }
+      }
+
+      
+      //Validating image
+      if (!validator.isEmpty(data.profilePicture)) {
+        if (!Types.ObjectId.isValid(data.profilePicture)) {
+          errors.profilePicture = "Profile picture must be a valid MongoDB ObjectId";
+        } else {
+          const image = await images.findById(data.profilePicture);
+          if (!image) {
+            errors.profilePicture = "Profile image does not exist";
+          }else {
+            if(image.uploadedBy.toString() !== user_id) {
+              errors.profilePicture = "Not allowed to upload profile picture";
+            }
+          }
         }
       }
     }
@@ -172,30 +213,29 @@ exports.updateUserTypeValidator = async function (data) {
     data = !isEmpty(data) ? data : "";
     data.userType = !isEmpty(data.userType) ? data.userType : "";
 
-    if(isEmpty(data)) {
+    if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
-    }else {
-        if(isEmpty(data.userType)) {
-          errors.userType = "User type is required";
-        }else if(!Types.ObjectId.isValid(data.userType)) {
-          errors.userType = "Invalid user type format";
-        }else {
-          const user_type = await user_types.findOne({
-            _id : data.userType,
-            isActive : true,
-          });
-          if(!user_type) {
-            errors.userType = "User type not found or inactive";
-          }
+    } else {
+      if (isEmpty(data.userType)) {
+        errors.userType = "User type is required";
+      } else if (!Types.ObjectId.isValid(data.userType)) {
+        errors.userType = "Invalid user type format";
+      } else {
+        const user_type = await user_types.findOne({
+          _id: data.userType,
+          isActive: true,
+        });
+        if (!user_type) {
+          errors.userType = "User type not found or inactive";
         }
+      }
     }
 
     return {
       errors,
-      isValid : isEmpty(errors),
-    }
-    
+      isValid: isEmpty(errors),
+    };
   } catch (error) {
     console.log("Error updating user type : ", error);
   }
-}
+};

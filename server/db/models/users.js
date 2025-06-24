@@ -12,6 +12,10 @@ const users = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    profilePicture: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "images",
+    },
     googleId: {
       type: String,
     },

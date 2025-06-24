@@ -2,6 +2,7 @@ const validator = require("validator");
 const isEmpty = require("./is_empty");
 const users = require("../db/models/users");
 const trips = require("../db/models/trips");
+const Image = require("../db/models/images");
 const requestStatus = require("../db/models/customer_request_status");
 const { Types } = require("mongoose");
 const customer_requests = require("../db/models/customer_requests");
@@ -161,10 +162,14 @@ exports.customerRequestValidator = async function (data, user_id) {
 exports.customerRequestUpdateValidator = async function (
   data,
   user_id,
-  customerRequestId
+  customerRequestId,
+  images,
+  deletedImages
 ) {
   try {
     let errors = {};
+    let validImageIdsToAdd = [];
+    let cleanRemoveImageIds = [];
 
     data = !isEmpty(data) ? data : "";
     user_id = !isEmpty(user_id) ? user_id : "";
@@ -280,21 +285,117 @@ exports.customerRequestUpdateValidator = async function (
       }
 
       // Validate status (optional but must be valid if provided)
-        if (!isEmpty(data.status)) {
-          if (!Types.ObjectId.isValid(data.status)) {
-            errors.status = "Invalid status ID";
-          } else {
-            const statusExists = await requestStatus.findById(data.status);
-            if (!statusExists) {
-              errors.status = "Status not found";
-            }
+      if (!isEmpty(data.status)) {
+        if (!Types.ObjectId.isValid(data.status)) {
+          errors.status = "Invalid status ID";
+        } else {
+          const statusExists = await requestStatus.findById(data.status);
+          if (!statusExists) {
+            errors.status = "Status not found";
           }
         }
+      }
+
+      //Validating images
+            // Validate and sanitize removeImageIds
+            if (deletedImages && Array.isArray(deletedImages)) {
+              // cleanRemoveImageIds = deletedImages.filter((id) =>
+              //   Types.ObjectId.isValid(id)
+              // );
+              // const invalidRemoveIds = deletedImages.filter(
+              //   (id) => !Types.ObjectId.isValid(id)
+              // );
+              // invalidRemoveIds.forEach((id) => {
+              //   errors[`removeImageIds[${removeImageIds.indexOf(id)}]`] =
+              //     "Invalid image ID for removal";
+              // });
+              // Step 1: Filter valid ObjectIds
+              cleanRemoveImageIds = deletedImages.filter((id) =>
+                Types.ObjectId.isValid(id)
+              );
+              const invalidRemoveIds = deletedImages.filter(
+                (id) => !Types.ObjectId.isValid(id)
+              );
+      
+              // Step 2: Add validation errors for invalid ObjectIds
+              invalidRemoveIds.forEach((id) => {
+                errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+                  "Invalid image ID for removal";
+              });
+      
+              // Step 3: Load the vehicle’s current image IDs
+              const customerRequest = await customer_requests.findById(customerRequestId).select("images");
+              const currentImageIds =
+                customerRequest?.images?.map((id) => id.toString()) || [];
+      
+              // Step 4: Check existence in `images` collection
+              const existingImages = await Image.find({
+                _id: { $in: cleanRemoveImageIds },
+              }).select("_id");
+      
+              const existingImageIds = existingImages.map((img) =>
+                img._id.toString()
+              );
+      
+              // Step 5: Check each ID - must exist in DB and in vehicle document
+              cleanRemoveImageIds = cleanRemoveImageIds.filter((id) => {
+                const inDb = existingImageIds.includes(id);
+                const inCustomerRequest = currentImageIds.includes(id);
+                if (!inDb) {
+                  errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+                    "Image not found in DB";
+                } else if (!inCustomerRequest) {
+                  errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+                    "Image does not belong to this customer request";
+                }
+                return inDb && inCustomerRequest;
+              });
+            }
+      
+            // Validate and verify uploaded images
+            if (images && images.length > 0) {
+              if (!Array.isArray(images)) {
+                errors.images = "Images must be an array of image IDs";
+              } else {
+                const validObjectIds = images.filter((id) =>
+                  Types.ObjectId.isValid(id)
+                );
+                const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
+      
+                invalidIds.forEach((id) => {
+                  errors[`images[${images.indexOf(id)}]`] =
+                    "Invalid MongoDB ObjectId";
+                });
+      
+                if (validObjectIds.length === 0) {
+                  errors.images = "No valid images provided";
+                } else {
+                  // Fetch all matching images uploaded by the user
+                  const foundImages = await Image.find({
+                    _id: { $in: validObjectIds },
+                    uploadedBy: user_id,
+                  }).select("_id");
+      
+                  const foundImageIds = foundImages.map((img) => img._id.toString());
+      
+                  validObjectIds.forEach((id, i) => {
+                    if (!foundImageIds.includes(id.toString())) {
+                      errors[`images[${images.indexOf(id)}]`] =
+                        "Image not found or not uploaded by this user";
+                    } else {
+                      validImageIdsToAdd.push(id);
+                    }
+                  });
+                }
+              }
+            }
     }
 
     return {
       errors,
       isValid: isEmpty(errors),
+      validImageIdsToAdd,
+      cleanRemoveImageIds,
     };
   } catch (error) {
     console.log("Customer request update validation error : ", error);

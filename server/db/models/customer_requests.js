@@ -30,6 +30,12 @@ const customer_requests = new mongoose.Schema(
       },
       description: { type: String },
     },
+    images: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "images",
+      },
+    ],
     pickupTime: {
       type: Date,
       required: false,

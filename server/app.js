@@ -14,6 +14,7 @@ const tripRoutes = require("./routes/tripRoutes");
 const vehicleRoutes = require('./routes/vehicleRoutes');
 const customerRequestRoutes = require('./routes/customerRequestRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const imageRoutes = require('./routes/imageRoutes');
 const passport = require('passport');
 const session = require('express-session');
 const path = require('path');
@@ -28,7 +29,7 @@ app.use(helmet());
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 app.use(morgan("common"));
 app.use(bodyParser.json({ limit: "100mb" }));
-app.use(bodyParser.urlencoded({ extended: false, limit: "100mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
 
 
 
@@ -62,12 +63,14 @@ app.get("/", (req, res) => {
   res.send("This is Home Route");
 });
 
+app.use("/uploads", express.static("uploads"));
 app.use("/users", userRoutes);
 app.use("/auth", authRoutes);
 app.use("/trips", tripRoutes);
 app.use("/vehicles", vehicleRoutes);
 app.use("/customer-requests", customerRequestRoutes);
 app.use("/bookings", bookingRoutes);
+app.use("/images", imageRoutes);
 
 //Running cron at startup
 fetchDisposableEmailDomains();

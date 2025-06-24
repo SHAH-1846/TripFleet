@@ -3,12 +3,13 @@ const isEmpty = require("./is_empty");
 const users = require("../db/models/users");
 const vehicles = require("../db/models/vehicles");
 const vehicle_types = require("../db/models/vehicle_types");
+const Image = require("../db/models/images");
 const vehicle_status = require("../db/models/vehicle_status");
 const { Types } = require("mongoose");
 const jwt = require("jsonwebtoken");
 const user_types = require("../db/models/user_types");
 
-exports.vehicleCreationValidator = async function (data, user_id) {
+exports.vehicleCreationValidator = async function (data, user_id, images) {
   try {
     let errors = {};
 
@@ -130,20 +131,70 @@ exports.vehicleCreationValidator = async function (data, user_id) {
       ) {
         errors.registrationYear = `Vehicle registration year should be between 1990 and ${currentYear}`;
       }
+
+      //Validating images
+
+      if (images.length > 0) {
+        var validImageIds = [];
+
+        if (!Array.isArray(images)) {
+          errors.images = "Images must be an array of image IDs";
+        }
+
+        // Filter out invalid ObjectIds early
+        const validObjectIds = images.filter((id) =>
+          Types.ObjectId.isValid(id)
+        );
+        const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
+
+        invalidIds.forEach((id) => {
+          errors[`images[${images.indexOf(id)}]`] = "Invalid MongoDB ObjectId";
+        });
+
+        if (validObjectIds.length === 0) {
+          errors.images = "No valid images";
+        }
+
+        // Fetch all matching images uploaded by the user
+        const foundImages = await Image.find({
+          _id: { $in: validObjectIds },
+          uploadedBy: user_id,
+        }).select("_id");
+
+        const foundImageIds = foundImages.map((img) => img._id.toString());
+
+        validObjectIds.forEach((id, i) => {
+          if (!foundImageIds.includes(id.toString())) {
+            errors[`images[${images.indexOf(id)}]`] =
+              "Image not found or not uploaded by this user";
+          } else {
+            validImageIds.push(id);
+          }
+        });
+      }
     }
 
     return {
       errors,
       isValid: isEmpty(errors),
+      validImageIds,
     };
   } catch (error) {
     console.log("Vehicle creation validation error : ", error);
   }
 };
 
-exports.vehicleUpdateValidator = async function (data, user_id, vehicleId) {
+exports.vehicleUpdateValidator = async function (
+  data,
+  user_id,
+  vehicleId,
+  images,
+  deletedImages
+) {
   try {
     let errors = {};
+    let validImageIdsToAdd = [];
+    let cleanRemoveImageIds = [];
 
     data = !isEmpty(data) ? data : "";
     data.user = !isEmpty(data.user) ? data.user : "";
@@ -252,27 +303,167 @@ exports.vehicleUpdateValidator = async function (data, user_id, vehicleId) {
           errors.registrationYear = `Vehicle registration year should be between 1990 and ${currentYear}`;
         }
       }
+
+      //Validating images
+
+      // if (images && images.length > 0) {
+      //   var validImageIds = [];
+
+      //   if (!Array.isArray(images)) {
+      //     errors.images = "Images must be an array of image IDs";
+      //   }
+
+      //   // Filter out invalid ObjectIds early
+      //   const validObjectIds = images.filter((id) =>
+      //     Types.ObjectId.isValid(id)
+      //   );
+      //   const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
+
+      //   invalidIds.forEach((id) => {
+      //     errors[`images[${images.indexOf(id)}]`] = "Invalid MongoDB ObjectId";
+      //   });
+
+      //   if (validObjectIds.length === 0) {
+      //     errors.images = "No valid images";
+      //   }
+
+      //   // Fetch all matching images uploaded by the user
+      //   const foundImages = await Image.find({
+      //     _id: { $in: validObjectIds },
+      //     uploadedBy: user_id,
+      //   }).select("_id");
+
+      //   const foundImageIds = foundImages.map((img) => img._id.toString());
+
+      //   validObjectIds.forEach((id, i) => {
+      //     if (!foundImageIds.includes(id.toString())) {
+      //       errors[`images[${images.indexOf(id)}]`] =
+      //         "Image not found or not uploaded by this user";
+      //     } else {
+      //       validImageIds.push(id);
+      //     }
+      //   });
+      // }
+
+      // Validate and sanitize removeImageIds
+      if (deletedImages && Array.isArray(deletedImages)) {
+        // cleanRemoveImageIds = deletedImages.filter((id) =>
+        //   Types.ObjectId.isValid(id)
+        // );
+        // const invalidRemoveIds = deletedImages.filter(
+        //   (id) => !Types.ObjectId.isValid(id)
+        // );
+        // invalidRemoveIds.forEach((id) => {
+        //   errors[`removeImageIds[${removeImageIds.indexOf(id)}]`] =
+        //     "Invalid image ID for removal";
+        // });
+        // Step 1: Filter valid ObjectIds
+        cleanRemoveImageIds = deletedImages.filter((id) =>
+          Types.ObjectId.isValid(id)
+        );
+        const invalidRemoveIds = deletedImages.filter(
+          (id) => !Types.ObjectId.isValid(id)
+        );
+
+        // Step 2: Add validation errors for invalid ObjectIds
+        invalidRemoveIds.forEach((id) => {
+          errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+            "Invalid image ID for removal";
+        });
+
+        // Step 3: Load the vehicle’s current image IDs
+        const vehicle = await vehicles.findById(vehicleId).select("images");
+        const currentImageIds =
+          vehicle?.images?.map((id) => id.toString()) || [];
+
+        // Step 4: Check existence in `images` collection
+        const existingImages = await Image.find({
+          _id: { $in: cleanRemoveImageIds },
+        }).select("_id");
+
+        const existingImageIds = existingImages.map((img) =>
+          img._id.toString()
+        );
+
+        // Step 5: Check each ID - must exist in DB and in vehicle document
+        cleanRemoveImageIds = cleanRemoveImageIds.filter((id) => {
+          const inDb = existingImageIds.includes(id);
+          const inVehicle = currentImageIds.includes(id);
+          if (!inDb) {
+            errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+              "Image not found in DB";
+          } else if (!inVehicle) {
+            errors[`deletedImages[${deletedImages.indexOf(id)}]`] =
+              "Image does not belong to this vehicle";
+          }
+          return inDb && inVehicle;
+        });
+      }
+
+      // Validate and verify uploaded images
+      if (images && images.length > 0) {
+        if (!Array.isArray(images)) {
+          errors.images = "Images must be an array of image IDs";
+        } else {
+          const validObjectIds = images.filter((id) =>
+            Types.ObjectId.isValid(id)
+          );
+          const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
+
+          invalidIds.forEach((id) => {
+            errors[`images[${images.indexOf(id)}]`] =
+              "Invalid MongoDB ObjectId";
+          });
+
+          if (validObjectIds.length === 0) {
+            errors.images = "No valid images provided";
+          } else {
+            // Fetch all matching images uploaded by the user
+            const foundImages = await Image.find({
+              _id: { $in: validObjectIds },
+              uploadedBy: user_id,
+            }).select("_id");
+
+            const foundImageIds = foundImages.map((img) => img._id.toString());
+
+            validObjectIds.forEach((id, i) => {
+              if (!foundImageIds.includes(id.toString())) {
+                errors[`images[${images.indexOf(id)}]`] =
+                  "Image not found or not uploaded by this user";
+              } else {
+                validImageIdsToAdd.push(id);
+              }
+            });
+          }
+        }
+      }
     }
 
     return {
       errors,
       isValid: isEmpty(errors),
+      validImageIdsToAdd,
+      cleanRemoveImageIds,
     };
   } catch (error) {
     console.log("Vehicle updation validation error : ", error);
   }
 };
 
-exports.updateVehicleStatusValidator = async function (data, user_id, vehicleId) {
+exports.updateVehicleStatusValidator = async function (
+  data,
+  user_id,
+  vehicleId
+) {
   try {
     let errors = {};
 
     data = !isEmpty(data) ? data : "";
     data.status = !isEmpty(data.status) ? data.status : "";
 
-    if(isEmpty(data)) {
-      errors.data = "Please complete all required fields to continue"
-    }else {
+    if (isEmpty(data)) {
+      errors.data = "Please complete all required fields to continue";
+    } else {
       //Validating user
       if (!user_id) {
         errors.user = "Please login to continue";
@@ -288,7 +479,7 @@ exports.updateVehicleStatusValidator = async function (data, user_id, vehicleId)
       }
 
       //Validating status
-       if (data.status) {
+      if (data.status) {
         if (!Types.ObjectId.isValid(data.status)) {
           errors.status = "Vehicle status must be a valid MongoDB ObjectId";
         } else {
@@ -297,16 +488,15 @@ exports.updateVehicleStatusValidator = async function (data, user_id, vehicleId)
             errors.status = "Vehicle status does not exist";
           }
         }
-      }else {
+      } else {
         errors.status = "Vehicle status is required";
       }
     }
 
     return {
       errors,
-      isValid : isEmpty(errors),
-    }
-
+      isValid: isEmpty(errors),
+    };
   } catch (error) {
     console.log("Vehicle status updation validation error : ", error);
   }

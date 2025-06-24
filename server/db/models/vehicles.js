@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const vehicles = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'users',
+      ref: "users",
       required: true,
     },
     vehicleNumber: {
@@ -15,19 +15,25 @@ const vehicles = new mongoose.Schema(
     },
     vehicleType: {
       type: mongoose.Schema.Types.ObjectId,
-      ref : "vehicle_types",
-      required : true,
+      ref: "vehicle_types",
+      required: true,
     },
     brand: { type: String, required: true },
     model: { type: String, required: true },
     color: { type: String },
+    images: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "images",
+      },
+    ],
     capacity: { type: Number }, // in kg or liters
     registrationYear: { type: Number },
     status: {
       type: mongoose.Schema.Types.ObjectId,
-      ref : "vehicle_status",
-      default: '684bbcb5a9dcd0556d12b2a5',
-      required : true,
+      ref: "vehicle_status",
+      default: "684bbcb5a9dcd0556d12b2a5",
+      required: true,
     },
   },
   {
@@ -35,4 +41,4 @@ const vehicles = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model('vehicles', vehicles);
+module.exports = mongoose.model("vehicles", vehicles);

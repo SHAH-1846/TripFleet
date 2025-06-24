@@ -1,8 +1,11 @@
+const fs = require("fs");
+const path = require("path");
 const bcrypt = require("bcryptjs");
 const users = require("../db/models/users");
 const user_types = require("../db/models/user_types");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
+const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
 const registrationValidator =
   require("../validations/userValidations").registrationValidator;
 const updateValidator =
@@ -25,6 +28,7 @@ exports.register = async function (req, res) {
       const password = req.body.password;
       const cofirmPassword = req.body.cofirmPassword;
       const user_type = req.body.user_type;
+      const image = req.body.image;
 
       let salt = await bcrypt.genSalt(10);
       let hashed_password = await bcrypt.hash(password, salt);
@@ -35,6 +39,7 @@ exports.register = async function (req, res) {
         lastName,
         email,
         user_type,
+        profilePicture: image,
         password: hashed_password,
       });
 
@@ -44,6 +49,7 @@ exports.register = async function (req, res) {
         lastName: new_user.lastName,
         email: new_user.email,
         user_type: new_user.user_type,
+        image,
       };
 
       //Send email for email verification
@@ -64,6 +70,15 @@ exports.register = async function (req, res) {
         return res.status(response.statusCode).send(response);
       }
     } else {
+      // Also handle cleanup here in case of unexpected errors
+      if (req.file && req.file.path) {
+        fs.unlink(
+          path.join(__dirname, "../uploads/users", req.file.filename),
+          (err) => {
+            if (err) console.error("Failed to delete uploaded image:", err);
+          }
+        );
+      }
       let response = error_function({
         status: 400,
         message: "Validation Failed",
@@ -107,8 +122,8 @@ exports.getRegisteredUsers = async function (req, res) {
         .findOne({ _id: userId })
         .select("-password -__v")
         .populate({
-          path: "user_type",
-          select: "name", // Only fetch the 'name' field from UserType
+          path: "user_type profilePicture",
+          select: "-password -__v", // Only fetch the 'name' field from UserType
         });
 
       if (userDatas) {
@@ -260,25 +275,24 @@ exports.updateuserTypes = async function (req, res) {
     if (isValid) {
       // Check if user exists
       const user = await users.findById(req.params.id);
-      if (!user){
+      if (!user) {
         let response = error_function({
-          status : 404,
-          message : "User not found",
+          status: 404,
+          message: "User not found",
         });
         return res.status(response.statusCode).send(response);
-      }else {
+      } else {
+        // Update user_type
+        user.user_type = req.body.userType;
+        await user.save();
 
-      // Update user_type
-      user.user_type = req.body.userType;
-      await user.save();
-
-      let response = success_function({
-        status : 200,
-        data : user,
-        message : "User type updated successfully",
-      });
-      return res.status(response.statusCode).send(response);
-    }
+        let response = success_function({
+          status: 200,
+          data: user,
+          message: "User type updated successfully",
+        });
+        return res.status(response.statusCode).send(response);
+      }
     } else {
       let response = error_function({
         status: 400,
@@ -313,13 +327,19 @@ exports.updateuserTypes = async function (req, res) {
 
 exports.updateUser = async function (req, res) {
   try {
-    const { errors, isValid } = updateValidator(req.body);
+    const user_id = extractUserIdFromToken(req);
+    if (!user_id) {
+      let response = error_function({
+        status: 400,
+        message: "Please login to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+    const { errors, isValid } = await updateValidator(req.body, user_id);
 
     if (isValid) {
-      const userId = req.query.userId;
-      console.log("userId : ", userId);
 
-      const allowedFields = ["firstName", "lastName"]; // you can expand this list
+      const allowedFields = ["firstName", "lastName", "profilePicture"]; // you can expand this list
       const updates = {};
 
       allowedFields.forEach((field) => {
@@ -330,7 +350,7 @@ exports.updateUser = async function (req, res) {
 
       const updatedUser = await users
         .findByIdAndUpdate(
-          { _id: userId },
+          { _id: user_id },
           { $set: updates },
           { new: true, runValidators: true }
         )

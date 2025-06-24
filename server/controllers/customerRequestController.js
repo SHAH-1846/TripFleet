@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const CustomerRequestStatus = require("../db/models/customer_request_status");
 const {
   success_function,
@@ -13,9 +15,12 @@ const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const Trip = require("../db/models/trips");
 const customer_requests = require("../db/models/customer_requests");
+const Image = require("../db/models/images");
 
 exports.createCustomerRequest = async (req, res) => {
   try {
+    console.log("req.body : ", req.body);
+
     const { pickupLocation, dropoffLocation, packageDetails, pickupTime } =
       req.body;
 
@@ -47,6 +52,8 @@ exports.createCustomerRequest = async (req, res) => {
     );
 
     if (isValid) {
+      const image = req.file ? req.file.filename : null;
+
       // if (!pickupLocation || !pickupLocation.coordinates || pickupLocation.coordinates.length !== 2) {
       //   return res.status(400).json({ success: false, message: "Invalid pickup location coordinates" });
       // }
@@ -57,6 +64,7 @@ exports.createCustomerRequest = async (req, res) => {
 
       const newRequest = await CustomerRequest.create({
         user: user_id,
+        image,
         pickupLocation: {
           address: pickupLocation.address,
           coordinates: {
@@ -90,6 +98,19 @@ exports.createCustomerRequest = async (req, res) => {
         return res.status(response.statusCode).send(response);
       }
     } else {
+      // Also handle cleanup here in case of unexpected errors
+      if (req.file && req.file.path) {
+        fs.unlink(
+          path.join(
+            __dirname,
+            "../uploads/customerRequests",
+            req.file.filename
+          ),
+          (err) => {
+            if (err) console.error("Failed to delete uploaded image:", err);
+          }
+        );
+      }
       let response = error_function({
         status: 400,
         message: "Validation Failed",
@@ -123,49 +144,20 @@ exports.createCustomerRequest = async (req, res) => {
 
 exports.updateCustomerRequest = async (req, res) => {
   try {
-    let user_id;
+    let user_id = extractUserIdFromToken(req);
+    let images = req.body ? req.body.images : null;
+    let deletedImages = req.body ? req.body.deletedImages : null;
 
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    if (
-      token == null ||
-      token == "null" ||
-      token == "" ||
-      token == "undefined"
-    ) {
-      let response = error_function({
-        status: 400,
-        message: "Please login to continue",
-      });
-      res.status(response.statusCode).send(response);
-      return;
-    }
-
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
-
-    const { errors, isValid } = await customerRequestUpdateValidator(
-      req.body,
-      user_id,
-      req.params.customerRequestId
-    );
+    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds } =
+      await customerRequestUpdateValidator(
+        req.body,
+        user_id,
+        req.params.customerRequestId,
+        images,
+        deletedImages
+      );
 
     if (isValid) {
-      console.log("req.body : ", req.body);
       const customerRequestId = req.params.customerRequestId;
 
       if (!mongoose.Types.ObjectId.isValid(customerRequestId)) {
@@ -256,6 +248,85 @@ exports.updateCustomerRequest = async (req, res) => {
       if (pickupTime) update.pickupTime = pickupTime;
       if (status) update.status = status;
 
+      if (
+        (validImageIdsToAdd && validImageIdsToAdd.length > 0) ||
+        (cleanRemoveImageIds && cleanRemoveImageIds.length > 0)
+      ) {
+        const customerRequest = await customer_requests
+          .findById(customerRequestId)
+          .select("images");
+        if (!customerRequest) {
+          return res.status(404).send(
+            error_function({
+              status: 404,
+              message: "Customer request not found",
+            })
+          );
+        }
+        const currentImageIds = customerRequest.images.map((id) =>
+          id.toString()
+        );
+
+        // Remove unwanted images
+        const remainingImages = currentImageIds.filter(
+          (id) => !cleanRemoveImageIds.includes(id)
+        );
+
+        // Add new images (avoid duplicates)
+        const finalImageIds = Array.from(
+          new Set([
+            ...remainingImages,
+            ...validImageIdsToAdd.map((id) => id.toString()),
+          ])
+        );
+
+        update.images = finalImageIds;
+
+        // // Fetch full image details for file deletion
+        // const imagesToDelete = await Image.find({
+        //   _id: { $in: cleanRemoveImageIds },
+        // });
+
+        // for (const img of imagesToDelete) {
+        //   const filePath = path.join(__dirname, `..`, img.path);
+        //   fs.unlink(filePath, (err) => {
+        //     if (err) {
+        //       console.error(`Failed to delete image file: ${filePath}`, err);
+        //     }
+        //   });
+        // }
+
+        // //delete image records from DB
+        // await Image.deleteMany({ _id: { $in: cleanRemoveImageIds } });
+
+        // 1. Convert all IDs to string for comparison
+        const addIds = validImageIdsToAdd.map((id) => id.toString());
+        const removeIds = cleanRemoveImageIds.map((id) => id.toString());
+
+        // 2. Filter out common IDs — these should NOT be deleted
+        const finalRemoveImageIds = removeIds.filter(
+          (id) => !addIds.includes(id)
+        );
+
+        // 3. Proceed only if there are non-conflicting IDs left to delete
+        if (finalRemoveImageIds.length > 0) {
+          const imagesToDelete = await Image.find({
+            _id: { $in: finalRemoveImageIds },
+          });
+
+          for (const img of imagesToDelete) {
+            const filePath = path.join(__dirname, "..", img.path);
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Failed to delete file ${filePath}:`, err);
+              }
+            });
+          }
+
+          await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        }
+      }
+
       const updated = await CustomerRequest.findByIdAndUpdate(
         customerRequestId,
         { $set: update },
@@ -269,10 +340,10 @@ exports.updateCustomerRequest = async (req, res) => {
           message: "Customer request updated successfully",
         });
         return res.status(response.statusCode).send(response);
-      }else {
+      } else {
         let response = error_function({
-          status : 400,
-          message : "Problem updating customer request",
+          status: 400,
+          message: "Problem updating customer request",
         });
         return res.status(response.statusCode).send(response);
       }
@@ -547,18 +618,22 @@ exports.getMyCustomerRequests = async (req, res) => {
   try {
     const userId = extractUserIdFromToken(req);
     if (!userId) {
-      return res.status(401).send(error_function({ status: 401, message: "Unauthorized" }));
+      return res
+        .status(401)
+        .send(error_function({ status: 401, message: "Unauthorized" }));
     }
 
     const myRequests = await CustomerRequest.find({ user: userId })
       .populate("status user", "-__v -password")
       .sort({ createdAt: -1 });
 
-    return res.status(200).send(success_function({
-      status: 200,
-      message: "My customer requests fetched successfully",
-      data: myRequests,
-    }));
+    return res.status(200).send(
+      success_function({
+        status: 200,
+        message: "My customer requests fetched successfully",
+        data: myRequests,
+      })
+    );
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       let response = error_function({

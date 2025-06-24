@@ -1,9 +1,13 @@
+const fs = require("fs");
+const path = require("path");
 const VehicleType = require("../db/models/vehicle_types");
 const Vehicle = require("../db/models/vehicles");
 const VehicleStatus = require("../db/models/vehicle_status");
+const Image = require("../db/models/images");
 const mongoose = require("mongoose");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
+const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
 const vehicleCreationValidator =
   require("../validations/vehicleValidations").vehicleCreationValidator;
 const vehicleUpdateValidator =
@@ -17,44 +21,13 @@ dotenv.config();
 
 exports.createVehicle = async (req, res) => {
   try {
-    let user_id;
+    let user_id = extractUserIdFromToken(req);
+    let images = req.body ? req.body.images : null;
 
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    if (
-      token == null ||
-      token == "null" ||
-      token == "" ||
-      token == "undefined"
-    ) {
-      let response = error_function({
-        status: 400,
-        message: "Please login to continue",
-      });
-      res.status(response.statusCode).send(response);
-      return;
-    }
-
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
-
-    const { errors, isValid } = await vehicleCreationValidator(
+    const { errors, isValid, validImageIds } = await vehicleCreationValidator(
       req.body,
-      user_id
+      user_id,
+      images
     );
 
     if (isValid) {
@@ -67,6 +40,12 @@ exports.createVehicle = async (req, res) => {
         capacity,
         registrationYear,
       } = req.body;
+
+      // Ensure imageIds is an array of valid ObjectId strings
+      const imagesArray =
+        Array.isArray(images) && images.length > 0
+          ? images.map((id) => new mongoose.Types.ObjectId(id))
+          : [];
 
       function normalizeVehicleNumber(vehicleNumber) {
         return vehicleNumber.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(); // Removes -, space, etc.
@@ -83,6 +62,7 @@ exports.createVehicle = async (req, res) => {
         color,
         capacity,
         registrationYear,
+        images: validImageIds,
       });
 
       if (newVehicle) {
@@ -100,6 +80,15 @@ exports.createVehicle = async (req, res) => {
         return res.status(response.statusCode).send(response);
       }
     } else {
+      // Also handle cleanup here in case of unexpected errors
+      if (req.file && req.file.path) {
+        fs.unlink(
+          path.join(__dirname, "../uploads/vehicles", req.file.filename),
+          (err) => {
+            if (err) console.error("Failed to delete uploaded image:", err);
+          }
+        );
+      }
       let response = error_function({
         status: 400,
         message: "Validation failed",
@@ -133,48 +122,20 @@ exports.createVehicle = async (req, res) => {
 
 exports.updateVehicle = async (req, res) => {
   try {
-    let user_id;
-
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    if (
-      token == null ||
-      token == "null" ||
-      token == "" ||
-      token == "undefined"
-    ) {
-      let response = error_function({
-        status: 400,
-        message: "Please login to continue",
-      });
-      res.status(response.statusCode).send(response);
-      return;
-    }
-
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
+    let user_id = extractUserIdFromToken(req);
+    let images = req.body ? req.body.images : null;
+    let deletedImages = req.body ? req.body.deletedImages : null;
 
     const { vehicleId } = req.params;
 
-    const { errors, isValid } = await vehicleUpdateValidator(
-      req.body,
-      user_id,
-      vehicleId
-    );
+    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds } =
+      await vehicleUpdateValidator(
+        req.body,
+        user_id,
+        vehicleId,
+        images,
+        deletedImages
+      );
 
     if (isValid) {
       const updateData = req.body;
@@ -185,6 +146,102 @@ exports.updateVehicle = async (req, res) => {
           ([_, value]) => value !== "" && value !== null && value !== undefined
         )
       );
+
+      if (
+        (validImageIdsToAdd && validImageIdsToAdd.length > 0) ||
+        (cleanRemoveImageIds && cleanRemoveImageIds.length > 0)
+      ) {
+        const vehicle = await Vehicle.findById(vehicleId).select("images");
+        if (!vehicle) {
+          return res.status(404).send(
+            error_function({
+              status: 404,
+              message: "Vehicle not found",
+            })
+          );
+        }
+        const currentImageIds = vehicle.images.map((id) => id.toString());
+
+        // Remove unwanted images
+        const remainingImages = currentImageIds.filter(
+          (id) => !cleanRemoveImageIds.includes(id)
+        );
+
+        // Add new images (avoid duplicates)
+        const finalImageIds = Array.from(
+          new Set([
+            ...remainingImages,
+            ...validImageIdsToAdd.map((id) => id.toString()),
+          ])
+        );
+
+        updateFields.images = finalImageIds;
+
+        // // Fetch full image details for file deletion
+        // const imagesToDelete = await Image.find({
+        //   _id: { $in: cleanRemoveImageIds },
+        // });
+
+        // for (const img of imagesToDelete) {
+        //   const filePath = path.join(__dirname, `..`, img.path);
+        //   fs.unlink(filePath, (err) => {
+        //     if (err) {
+        //       console.error(`Failed to delete image file: ${filePath}`, err);
+        //     }
+        //   });
+        // }
+
+        // //delete image records from DB
+        // await Image.deleteMany({ _id: { $in: cleanRemoveImageIds } });
+
+        // // 1. Filter out any images that are in both add and remove lists
+        // const finalRemoveImageIds = cleanRemoveImageIds.filter(
+        //   (id) => !validImageIdsToAdd.includes(id.toString())
+        // );
+
+        // // 2. If anything remains, proceed to delete
+        // if (finalRemoveImageIds.length > 0) {
+        //   const imagesToDelete = await Image.find({
+        //     _id: { $in: finalRemoveImageIds },
+        //   });
+
+        //   for (const img of imagesToDelete) {
+        //     const filePath = path.join(__dirname, "..", img.path);
+        //     fs.unlink(filePath, (err) => {
+        //       if (err) console.error(`Failed to delete file ${filePath}:`, err);
+        //     });
+        //   }
+
+        //   await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        // }
+
+        // 1. Convert all IDs to string for comparison
+        const addIds = validImageIdsToAdd.map((id) => id.toString());
+        const removeIds = cleanRemoveImageIds.map((id) => id.toString());
+
+        // 2. Filter out common IDs — these should NOT be deleted
+        const finalRemoveImageIds = removeIds.filter(
+          (id) => !addIds.includes(id)
+        );
+
+        // 3. Proceed only if there are non-conflicting IDs left to delete
+        if (finalRemoveImageIds.length > 0) {
+          const imagesToDelete = await Image.find({
+            _id: { $in: finalRemoveImageIds },
+          });
+
+          for (const img of imagesToDelete) {
+            const filePath = path.join(__dirname, "..", img.path);
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Failed to delete file ${filePath}:`, err);
+              }
+            });
+          }
+
+          await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        }
+      }
 
       //Formatting vehicleNumber
       if (req.body.vehicleNumber) {
@@ -288,7 +345,11 @@ exports.updateVehicleStatus = async function (req, res) {
         user_id = decoded.user_id;
       }
     });
-    const { isValid, errors } = await updateVehicleStatusValidator(req.body, user_id, vehicleId);
+    const { isValid, errors } = await updateVehicleStatusValidator(
+      req.body,
+      user_id,
+      vehicleId
+    );
 
     if (isValid) {
       // Check if vehicle exists
@@ -412,7 +473,8 @@ exports.getAllVehicles = async (req, res) => {
     const vehicles = await Vehicle.find(filter)
       .populate("vehicleType", "-__v")
       .populate("status", "-__v")
-      .populate("user", "-password -__v");
+      .populate("user", "-password -__v")
+      .populate("images", "-__v");
 
     if (vehicles) {
       let response = success_function({

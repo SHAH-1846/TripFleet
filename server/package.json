@@ -23,8 +23,8 @@
     "rollback:vehicle-status": "node db/seeders/vehicleStatusSeeder.js down",
     "seed:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js up",
     "rollback:customerRequestStatusSeeder": "node db/seeders/customerRequestStatusSeeder.js down",
-    "seed:bookingStatus" : "node db/seeders/bookingStatusSeeder.js up",
-    "rollback:bookingStatus" : "node db/seeders/bookingStatusSeeder.js down"
+    "seed:bookingStatus": "node db/seeders/bookingStatusSeeder.js up",
+    "rollback:bookingStatus": "node db/seeders/bookingStatusSeeder.js down"
   },
   "author": "",
   "license": "ISC",
@@ -42,6 +42,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
     "morgan": "^1.10.0",
+    "multer": "^2.0.1",
     "node-cron": "^4.1.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
