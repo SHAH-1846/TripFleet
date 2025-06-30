@@ -4,6 +4,7 @@ const VehicleType = require("../db/models/vehicle_types");
 const Vehicle = require("../db/models/vehicles");
 const VehicleStatus = require("../db/models/vehicle_status");
 const Image = require("../db/models/images");
+const Documents = require("../db/models/documents");
 const mongoose = require("mongoose");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
@@ -22,12 +23,14 @@ dotenv.config();
 exports.createVehicle = async (req, res) => {
   try {
     let user_id = extractUserIdFromToken(req);
-    let images = req.body ? req.body.images : null;
+    let images = req.body.images ? req.body.images : [];
+    let documents = req.body.documents ? req.body.documents : [];
 
-    const { errors, isValid, validImageIds } = await vehicleCreationValidator(
+    const { errors, isValid, validImageIds, validDocumentIds } = await vehicleCreationValidator(
       req.body,
       user_id,
-      images
+      images,
+      documents,
     );
 
     if (isValid) {
@@ -63,6 +66,7 @@ exports.createVehicle = async (req, res) => {
         capacity,
         registrationYear,
         images: validImageIds,
+        documents : validDocumentIds,
       });
 
       if (newVehicle) {
@@ -125,16 +129,20 @@ exports.updateVehicle = async (req, res) => {
     let user_id = extractUserIdFromToken(req);
     let images = req.body ? req.body.images : null;
     let deletedImages = req.body ? req.body.deletedImages : null;
+    let documents = req.body ? req.body.documents : null;
+    let deletedDocuments = req.body ? req.body.deletedDocuments : null;
 
     const { vehicleId } = req.params;
 
-    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds } =
+    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds, validDocumentIdsToAdd, cleanRemoveDocumentIds} =
       await vehicleUpdateValidator(
         req.body,
         user_id,
         vehicleId,
         images,
-        deletedImages
+        deletedImages,
+        documents,
+        deletedDocuments
       );
 
     if (isValid) {
@@ -177,44 +185,6 @@ exports.updateVehicle = async (req, res) => {
 
         updateFields.images = finalImageIds;
 
-        // // Fetch full image details for file deletion
-        // const imagesToDelete = await Image.find({
-        //   _id: { $in: cleanRemoveImageIds },
-        // });
-
-        // for (const img of imagesToDelete) {
-        //   const filePath = path.join(__dirname, `..`, img.path);
-        //   fs.unlink(filePath, (err) => {
-        //     if (err) {
-        //       console.error(`Failed to delete image file: ${filePath}`, err);
-        //     }
-        //   });
-        // }
-
-        // //delete image records from DB
-        // await Image.deleteMany({ _id: { $in: cleanRemoveImageIds } });
-
-        // // 1. Filter out any images that are in both add and remove lists
-        // const finalRemoveImageIds = cleanRemoveImageIds.filter(
-        //   (id) => !validImageIdsToAdd.includes(id.toString())
-        // );
-
-        // // 2. If anything remains, proceed to delete
-        // if (finalRemoveImageIds.length > 0) {
-        //   const imagesToDelete = await Image.find({
-        //     _id: { $in: finalRemoveImageIds },
-        //   });
-
-        //   for (const img of imagesToDelete) {
-        //     const filePath = path.join(__dirname, "..", img.path);
-        //     fs.unlink(filePath, (err) => {
-        //       if (err) console.error(`Failed to delete file ${filePath}:`, err);
-        //     });
-        //   }
-
-        //   await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
-        // }
-
         // 1. Convert all IDs to string for comparison
         const addIds = validImageIdsToAdd.map((id) => id.toString());
         const removeIds = cleanRemoveImageIds.map((id) => id.toString());
@@ -240,6 +210,64 @@ exports.updateVehicle = async (req, res) => {
           }
 
           await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        }
+      }
+
+           if (
+        (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
+        (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+      ) {
+        const vehicle = await Vehicle.findById(vehicleId).select("documents");
+        if (!vehicle) {
+          return res.status(404).send(
+            error_function({
+              status: 404,
+              message: "Vehicle not found",
+            })
+          );
+        }
+        const currentDocumentIds = vehicle.documents.map((id) => id.toString());
+
+        // Remove unwanted documents
+        const remainingDocuments = currentDocumentIds.filter(
+          (id) => !cleanRemoveDocumentIds.includes(id)
+        );
+
+        // Add new document (avoid duplicates)
+        const finalDocumentIds = Array.from(
+          new Set([
+            ...remainingDocuments,
+            ...validDocumentIdsToAdd.map((id) => id.toString()),
+          ])
+        );
+
+        updateFields.documents = finalDocumentIds;
+
+        // 1. Convert all IDs to string for comparison
+        const addIds = validDocumentIdsToAdd.map((id) => id.toString());
+        const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
+
+        // 2. Filter out common IDs — these should NOT be deleted
+        const finalRemoveDocumentIds = removeIds.filter(
+          (id) => !addIds.includes(id)
+        );
+
+        // 3. Proceed only if there are non-conflicting IDs left to delete
+        if (finalRemoveDocumentIds.length > 0) {
+          const documentsToDelete = await Documents.find({
+            _id: { $in: finalRemoveDocumentIds },
+          });
+
+          for (const doc of documentsToDelete) {
+            const filePath = path.join(__dirname, "..", doc.path);
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Failed to delete file ${filePath}:`, err);
+              }
+            });
+          }
+
+          await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
         }
       }
 

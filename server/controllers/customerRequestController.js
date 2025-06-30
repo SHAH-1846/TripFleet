@@ -16,43 +16,23 @@ const mongoose = require("mongoose");
 const Trip = require("../db/models/trips");
 const customer_requests = require("../db/models/customer_requests");
 const Image = require("../db/models/images");
+const Documents = require("../db/models/documents");
 
 exports.createCustomerRequest = async (req, res) => {
   try {
-    console.log("req.body : ", req.body);
-
     const { pickupLocation, dropoffLocation, packageDetails, pickupTime } =
       req.body;
 
-    let user_id;
-
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
+    let user_id = extractUserIdFromToken(req);
+    let images = req.body.images ? req.body.images : [];
+    let documents = req.body.documents ? req.body.documents : [];
 
     //Validations
-    const { errors, isValid } = await customerRequestValidator(
-      req.body,
-      user_id
-    );
+    const { errors, isValid, validImageIds, validDocumentIds } =
+      await customerRequestValidator(req.body, user_id, images, documents);
 
     if (isValid) {
-      const image = req.file ? req.file.filename : null;
+      // const image = req.file ? req.file.filename : null;
 
       // if (!pickupLocation || !pickupLocation.coordinates || pickupLocation.coordinates.length !== 2) {
       //   return res.status(400).json({ success: false, message: "Invalid pickup location coordinates" });
@@ -64,7 +44,8 @@ exports.createCustomerRequest = async (req, res) => {
 
       const newRequest = await CustomerRequest.create({
         user: user_id,
-        image,
+        images: validImageIds,
+        documents: validDocumentIds,
         pickupLocation: {
           address: pickupLocation.address,
           coordinates: {
@@ -147,15 +128,27 @@ exports.updateCustomerRequest = async (req, res) => {
     let user_id = extractUserIdFromToken(req);
     let images = req.body ? req.body.images : null;
     let deletedImages = req.body ? req.body.deletedImages : null;
+    let documents = req.body ? req.body.documents : null;
+    let deletedDocuments = req.body.deletedDocuments
+      ? req.body.deletedDocuments
+      : null;
 
-    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds } =
-      await customerRequestUpdateValidator(
-        req.body,
-        user_id,
-        req.params.customerRequestId,
-        images,
-        deletedImages
-      );
+    const {
+      errors,
+      isValid,
+      validImageIdsToAdd,
+      cleanRemoveImageIds,
+      validDocumentIdsToAdd,
+      cleanRemoveDocumentIds,
+    } = await customerRequestUpdateValidator(
+      req.body,
+      user_id,
+      req.params.customerRequestId,
+      images,
+      deletedImages,
+      documents,
+      deletedDocuments
+    );
 
     if (isValid) {
       const customerRequestId = req.params.customerRequestId;
@@ -282,20 +275,6 @@ exports.updateCustomerRequest = async (req, res) => {
 
         update.images = finalImageIds;
 
-        // // Fetch full image details for file deletion
-        // const imagesToDelete = await Image.find({
-        //   _id: { $in: cleanRemoveImageIds },
-        // });
-
-        // for (const img of imagesToDelete) {
-        //   const filePath = path.join(__dirname, `..`, img.path);
-        //   fs.unlink(filePath, (err) => {
-        //     if (err) {
-        //       console.error(`Failed to delete image file: ${filePath}`, err);
-        //     }
-        //   });
-        // }
-
         // //delete image records from DB
         // await Image.deleteMany({ _id: { $in: cleanRemoveImageIds } });
 
@@ -324,6 +303,68 @@ exports.updateCustomerRequest = async (req, res) => {
           }
 
           await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        }
+      }
+
+      if (
+        (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
+        (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+      ) {
+        const customerRequest = await customer_requests
+          .findById(customerRequestId)
+          .select("documents");
+        if (!customerRequest) {
+          return res.status(404).send(
+            error_function({
+              status: 404,
+              message: "Customer request not found",
+            })
+          );
+        }
+        const currentDocumentIds = customerRequest.documents.map((id) =>
+          id.toString()
+        );
+
+        // Remove unwanted documents
+        const remainingDocuments = currentDocumentIds.filter(
+          (id) => !cleanRemoveDocumentIds.includes(id)
+        );
+
+        // Add new documents (avoid duplicates)
+        const finalDocumentIds = Array.from(
+          new Set([
+            ...remainingDocuments,
+            ...validDocumentIdsToAdd.map((id) => id.toString()),
+          ])
+        );
+
+        update.documents = finalDocumentIds;
+
+        // 1. Convert all IDs to string for comparison
+        const addIds = validDocumentIdsToAdd.map((id) => id.toString());
+        const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
+
+        // 2. Filter out common IDs — these should NOT be deleted
+        const finalRemoveDocumentIds = removeIds.filter(
+          (id) => !addIds.includes(id)
+        );
+
+        // 3. Proceed only if there are non-conflicting IDs left to delete
+        if (finalRemoveDocumentIds.length > 0) {
+          const documentsToDelete = await Documents.find({
+            _id: { $in: finalRemoveDocumentIds },
+          });
+
+          for (const doc of documentsToDelete) {
+            const filePath = path.join(__dirname, "..", doc.path);
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Failed to delete file ${filePath}:`, err);
+              }
+            });
+          }
+
+          await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
         }
       }
 

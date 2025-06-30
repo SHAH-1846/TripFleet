@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const imageController = require("../controllers/imagesController");
+const documentController = require("../controllers/documentController");
 const getUploadMiddleware = require("../utils/uploadMiddleware");
-const uploadImage = getUploadMiddleware("images");
+const uploadDoc = getUploadMiddleware("documents");
 const access_control = require('../utils/access-control').accessControl;
 
 const setAccessControl = (access_type) => {
@@ -11,7 +11,7 @@ const setAccessControl = (access_type) => {
     }
 }
 
-router.post("/upload", setAccessControl('*'), uploadImage.array("images", 10), imageController.uploadImage);
-router.delete("/:id", setAccessControl("*"), imageController.deleteImageById);
+router.post("/upload", setAccessControl("*"), uploadDoc.array("documents", 10), documentController.uploadDoc);
+router.delete("/:id", setAccessControl("*"), documentController.deleteDocumentById);
 
 module.exports = router;

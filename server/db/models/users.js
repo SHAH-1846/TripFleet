@@ -42,6 +42,12 @@ const users = new mongoose.Schema(
       type: String,
       required: true,
     },
+    documents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "documents",
+      },
+    ],
   },
   {
     timestamps: true,

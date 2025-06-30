@@ -11,6 +11,8 @@ const setAccessControl = (access_type) => {
 }
 
 router.post('/login', setAccessControl('*'), authController.login);
+router.post("/request-otp", setAccessControl('*'), authController.requestOtp);
+router.post("/verify-otp", setAccessControl('*'), authController.verifyOtp);
 router.get('/google', passport.authenticate('google', {scope : ['profile', 'email']}));
 router.get('/google/callback', passport.authenticate('google', {failureRedirect : 'auth/login'}), authController.googleOAuth);
 

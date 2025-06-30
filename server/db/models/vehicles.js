@@ -27,6 +27,12 @@ const vehicles = new mongoose.Schema(
         ref: "images",
       },
     ],
+    documents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "documents",
+      },
+    ],
     capacity: { type: Number }, // in kg or liters
     registrationYear: { type: Number },
     status: {

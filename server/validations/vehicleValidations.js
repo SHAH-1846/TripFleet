@@ -5,11 +5,17 @@ const vehicles = require("../db/models/vehicles");
 const vehicle_types = require("../db/models/vehicle_types");
 const Image = require("../db/models/images");
 const vehicle_status = require("../db/models/vehicle_status");
+const Documents = require("../db/models/documents");
 const { Types } = require("mongoose");
 const jwt = require("jsonwebtoken");
 const user_types = require("../db/models/user_types");
 
-exports.vehicleCreationValidator = async function (data, user_id, images) {
+exports.vehicleCreationValidator = async function (
+  data,
+  user_id,
+  images,
+  documents
+) {
   try {
     let errors = {};
 
@@ -134,12 +140,21 @@ exports.vehicleCreationValidator = async function (data, user_id, images) {
 
       //Validating images
 
-      if (images.length > 0) {
+      if (images && images.length > 0) {
         var validImageIds = [];
 
         if (!Array.isArray(images)) {
           errors.images = "Images must be an array of image IDs";
         }
+
+        // Check for duplicate image IDs
+        const seen = new Set();
+        images.forEach((id, index) => {
+          if (seen.has(id)) {
+            errors[`images[${index}]`] = "Duplicate image ID detected";
+          }
+          seen.add(id);
+        });
 
         // Filter out invalid ObjectIds early
         const validObjectIds = images.filter((id) =>
@@ -172,12 +187,67 @@ exports.vehicleCreationValidator = async function (data, user_id, images) {
           }
         });
       }
+
+      //Validating documents
+      if (documents && documents.length > 0) {
+        var validDocumentIds = [];
+
+        if (!Array.isArray(documents)) {
+          errors.documents = "Documents must be an array of document IDs";
+        }
+
+        // Check for duplicate document IDs
+        const seen = new Set();
+        documents.forEach((id, index) => {
+          if (seen.has(id)) {
+            errors[`documents[${index}]`] = "Duplicate document ID detected";
+          }
+          seen.add(id);
+        });
+
+        // Filter out invalid ObjectIds early
+        const validObjectIds = documents.filter((id) =>
+          Types.ObjectId.isValid(id)
+        );
+        const invalidIds = documents.filter(
+          (id) => !Types.ObjectId.isValid(id)
+        );
+
+        invalidIds.forEach((id) => {
+          errors[`documents[${documents.indexOf(id)}]`] =
+            "Invalid MongoDB ObjectId";
+        });
+
+        if (validObjectIds.length === 0) {
+          errors.documents = "No valid documents";
+        }
+
+        // Fetch all matching documents uploaded by the user
+        const foundDocuments = await Documents.find({
+          _id: { $in: validObjectIds },
+          uploadedBy: user_id,
+        }).select("_id");
+
+        const foundDocumentIds = foundDocuments.map((doc) =>
+          doc._id.toString()
+        );
+
+        validObjectIds.forEach((id, i) => {
+          if (!foundDocumentIds.includes(id.toString())) {
+            errors[`documents[${documents.indexOf(id)}]`] =
+              "Document not found or not uploaded by this user";
+          } else {
+            validDocumentIds.push(id);
+          }
+        });
+      }
     }
 
     return {
       errors,
       isValid: isEmpty(errors),
       validImageIds,
+      validDocumentIds,
     };
   } catch (error) {
     console.log("Vehicle creation validation error : ", error);
@@ -189,12 +259,16 @@ exports.vehicleUpdateValidator = async function (
   user_id,
   vehicleId,
   images,
-  deletedImages
+  deletedImages,
+  documents,
+  deletedDocuments
 ) {
   try {
     let errors = {};
     let validImageIdsToAdd = [];
     let cleanRemoveImageIds = [];
+    let validDocumentIdsToAdd = [];
+    let cleanRemoveDocumentIds = [];
 
     data = !isEmpty(data) ? data : "";
     data.user = !isEmpty(data.user) ? data.user : "";
@@ -306,57 +380,8 @@ exports.vehicleUpdateValidator = async function (
 
       //Validating images
 
-      // if (images && images.length > 0) {
-      //   var validImageIds = [];
-
-      //   if (!Array.isArray(images)) {
-      //     errors.images = "Images must be an array of image IDs";
-      //   }
-
-      //   // Filter out invalid ObjectIds early
-      //   const validObjectIds = images.filter((id) =>
-      //     Types.ObjectId.isValid(id)
-      //   );
-      //   const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
-
-      //   invalidIds.forEach((id) => {
-      //     errors[`images[${images.indexOf(id)}]`] = "Invalid MongoDB ObjectId";
-      //   });
-
-      //   if (validObjectIds.length === 0) {
-      //     errors.images = "No valid images";
-      //   }
-
-      //   // Fetch all matching images uploaded by the user
-      //   const foundImages = await Image.find({
-      //     _id: { $in: validObjectIds },
-      //     uploadedBy: user_id,
-      //   }).select("_id");
-
-      //   const foundImageIds = foundImages.map((img) => img._id.toString());
-
-      //   validObjectIds.forEach((id, i) => {
-      //     if (!foundImageIds.includes(id.toString())) {
-      //       errors[`images[${images.indexOf(id)}]`] =
-      //         "Image not found or not uploaded by this user";
-      //     } else {
-      //       validImageIds.push(id);
-      //     }
-      //   });
-      // }
-
       // Validate and sanitize removeImageIds
       if (deletedImages && Array.isArray(deletedImages)) {
-        // cleanRemoveImageIds = deletedImages.filter((id) =>
-        //   Types.ObjectId.isValid(id)
-        // );
-        // const invalidRemoveIds = deletedImages.filter(
-        //   (id) => !Types.ObjectId.isValid(id)
-        // );
-        // invalidRemoveIds.forEach((id) => {
-        //   errors[`removeImageIds[${removeImageIds.indexOf(id)}]`] =
-        //     "Invalid image ID for removal";
-        // });
         // Step 1: Filter valid ObjectIds
         cleanRemoveImageIds = deletedImages.filter((id) =>
           Types.ObjectId.isValid(id)
@@ -437,6 +462,91 @@ exports.vehicleUpdateValidator = async function (
           }
         }
       }
+
+      //Validating documents
+
+      // Validate and sanitize removeDocumentIds
+      if (deletedDocuments && Array.isArray(deletedDocuments)) {
+        // Step 1: Filter valid ObjectIds
+        cleanRemoveDocumentIds = deletedDocuments.filter((id) =>
+          Types.ObjectId.isValid(id)
+        );
+        const invalidRemoveIds = deletedDocuments.filter(
+          (id) => !Types.ObjectId.isValid(id)
+        );
+
+        // Step 2: Add validation errors for invalid ObjectIds
+        invalidRemoveIds.forEach((id) => {
+          errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+            "Invalid document ID for removal";
+        });
+
+        // Step 3: Load the vehicle’s current image IDs
+        const vehicle = await vehicles.findById(vehicleId).select("documents");
+        const currentDocumentIds =
+          vehicle?.documents?.map((id) => id.toString()) || [];
+
+        // Step 4: Check existence in `images` collection
+        const existingDocuments = await Documents.find({
+          _id: { $in: cleanRemoveDocumentIds },
+        }).select("_id");
+
+        const existingDocumentIds = existingDocuments.map((doc) =>
+          doc._id.toString()
+        );
+
+        // Step 5: Check each ID - must exist in DB and in vehicle document
+        cleanRemoveDocumentIds = cleanRemoveDocumentIds.filter((id) => {
+          const inDb = existingDocumentIds.includes(id);
+          const inVehicle = currentDocumentIds.includes(id);
+          if (!inDb) {
+            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+              "Document not found in DB";
+          } else if (!inVehicle) {
+            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+              "Document does not belong to this vehicle";
+          }
+          return inDb && inVehicle;
+        });
+      }
+
+      // Validate and verify uploaded documents
+      if (documents && documents.length > 0) {
+        if (!Array.isArray(documents)) {
+          errors.documents = "Documents must be an array of document IDs";
+        } else {
+          const validObjectIds = documents.filter((id) =>
+            Types.ObjectId.isValid(id)
+          );
+          const invalidIds = documents.filter((id) => !Types.ObjectId.isValid(id));
+
+          invalidIds.forEach((id) => {
+            errors[`documents[${documents.indexOf(id)}]`] =
+              "Invalid MongoDB ObjectId";
+          });
+
+          if (validObjectIds.length === 0) {
+            errors.documents = "No valid documents provided";
+          } else {
+            // Fetch all matching documents uploaded by the user
+            const foundDocuments = await Documents.find({
+              _id: { $in: validObjectIds },
+              uploadedBy: user_id,
+            }).select("_id");
+
+            const foundDocumentIds = foundDocuments.map((doc) => doc._id.toString());
+
+            validObjectIds.forEach((id, i) => {
+              if (!foundDocumentIds.includes(id.toString())) {
+                errors[`documents[${documents.indexOf(id)}]`] =
+                  "Document not found or not uploaded by this user";
+              } else {
+                validDocumentIdsToAdd.push(id);
+              }
+            });
+          }
+        }
+      }
     }
 
     return {
@@ -444,6 +554,8 @@ exports.vehicleUpdateValidator = async function (
       isValid: isEmpty(errors),
       validImageIdsToAdd,
       cleanRemoveImageIds,
+      validDocumentIdsToAdd,
+      cleanRemoveDocumentIds,
     };
   } catch (error) {
     console.log("Vehicle updation validation error : ", error);

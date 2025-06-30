@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
 const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
-const Image = require("../db/models/images");
+const documents = require("../db/models/documents");
 const User = require("../db/models/users");
 const Vehicle = require("../db/models/vehicles");
 const CustomerRequest = require("../db/models/customer_requests");
@@ -11,13 +11,13 @@ const error_function = require("../utils/response-handler").error_function;
 const dotenv = require("dotenv");
 dotenv.config();
 
-exports.uploadImage = async (req, res) => {
+exports.uploadDoc = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).send(
         error_function({
           status: 400,
-          message: "No images uploaded",
+          message: "No document uploaded",
         })
       );
     }
@@ -56,32 +56,25 @@ exports.uploadImage = async (req, res) => {
         .send(error_function({ status: 401, message: "Unauthorized" }));
     }
 
-    const imagesToInsert = req.files.map((file) => ({
+    const docsToInsert = req.files.map((file) => ({
       filename: file.filename,
-      path: `/uploads/images/${folder}/${file.filename}`,
+      path: `/uploads/documents/${folder}/${file.filename}`,
       uploadedBy: userId,
     }));
-    
-    const savedImages = await Image.insertMany(imagesToInsert);
 
-    const imagesWithUrls = savedImages.map((img) => ({
+    const savedDocs = await documents.insertMany(docsToInsert);
+
+    const docsWithUrls = savedDocs.map((img) => ({
       ...img.toObject(),
       url: `http://localhost:${process.env.PORT}${img.path}`,
     }));
 
-    // const newImage = await Image.create({
-    //   filename: req.file.filename,
-    //   path: `/uploads/images/${folder}/${req.file.filename}`,
-    //   uploadedBy: userId || null,
-    // });
-
     let response = success_function({
       status: 201,
-      message: "Image uploaded",
-      data: imagesWithUrls,
+      message: "Document uploaded",
+      data: docsWithUrls,
     });
-    // response.data.path = `uploads/images/${folder}/${req.file.filename}`;
-    // response.data.url = `http://localhost:${process.env.PORT}/uploads/images/${folder}/${req.file.filename}`;
+
     return res.status(response.statusCode).send(response);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
@@ -96,7 +89,7 @@ exports.uploadImage = async (req, res) => {
       res.status(response.statusCode).send(response);
       return;
     } else {
-      console.log("Image upload error : ", error);
+      console.log("Document upload error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
@@ -107,15 +100,15 @@ exports.uploadImage = async (req, res) => {
   }
 };
 
-exports.deleteImageById = async (req, res) => {
+exports.deleteDocumentById = async (req, res) => {
   try {
-    const imageId = req.params.id;
+    const documentId = req.params.id;
 
-    if (!mongoose.Types.ObjectId.isValid(imageId)) {
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
       return res.status(400).send(
         error_function({
           status: 400,
-          message: "Invalid image ID",
+          message: "Invalid document ID",
         })
       );
     }
@@ -131,18 +124,18 @@ exports.deleteImageById = async (req, res) => {
       );
     }
 
-    const image = await Image.findById(imageId);
+    const document = await documents.findById(documentId);
 
-    if (!image) {
+    if (!document) {
       return res.status(404).send(
         error_function({
           status: 404,
-          message: "Image not found",
+          message: "Document not found",
         })
       );
     }
 
-    if (image.uploadedBy.toString() !== user_id) {
+    if (document.uploadedBy.toString() !== user_id) {
       return res.status(404).send(
         error_function({
           status: 400,
@@ -151,34 +144,31 @@ exports.deleteImageById = async (req, res) => {
       );
     }
 
-    const absolutePath = path.join(__dirname, "..", image.path);
+    const absolutePath = path.join(__dirname, "..", document.path);
     fs.unlink(absolutePath, (err) => {
-      if (err) console.warn("Image file deletion warning:", err.message);
+      if (err) console.warn("Document file deletion warning:", err.message);
     });
 
-    // Remove from users.profilePicture
-    await User.updateMany(
-      { profilePicture: imageId },
-      { $unset: { profilePicture: "" } }
-    );
+    // Remove from users.documents array
+    await User.updateMany({ documents: documentId }, { $pull: { documents: documentId } });
 
-    // Remove from vehicles.images array
+    // Remove from vehicles.documents array
     await Vehicle.updateMany(
-      { images: imageId },
-      { $pull: { images: imageId } }
+      { documents: documentId },
+      { $pull: { documents: documentId } }
     );
 
-    // Remove from customerRequests.images array
+    // Remove from customerRequests.documents array
     await CustomerRequest.updateMany(
-      { images: imageId },
-      { $pull: { images: imageId } }
+      { documents: documentId },
+      { $pull: { documents: documentId } }
     );
 
-    await image.deleteOne();
+    await document.deleteOne();
 
     const response = success_function({
       status: 200,
-      message: "Image and references deleted successfully",
+      message: "Document and references deleted successfully",
     });
     return res.status(response.statusCode).send(response);
   } catch (error) {
@@ -194,7 +184,7 @@ exports.deleteImageById = async (req, res) => {
       res.status(response.statusCode).send(response);
       return;
     } else {
-      console.log("Image deletion error : ", error);
+      console.log("Document deletion error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",

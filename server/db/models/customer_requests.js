@@ -36,13 +36,19 @@ const customer_requests = new mongoose.Schema(
         ref: "images",
       },
     ],
+    documents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "documents",
+      },
+    ],
     pickupTime: {
       type: Date,
       required: false,
     },
     status: {
       type: mongoose.Schema.Types.ObjectId,
-      ref : "customer_request_status",
+      ref: "customer_request_status",
       default: "684da101412825ef8b404711",
     },
     matchedTrip: {
@@ -53,7 +59,7 @@ const customer_requests = new mongoose.Schema(
   },
   {
     timestamps: true,
-    collection : 'customer_requests',
+    collection: "customer_requests",
   }
 );
 

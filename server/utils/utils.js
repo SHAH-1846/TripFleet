@@ -15,3 +15,16 @@ exports.extractUserIdFromToken = (req) => {
     return null;
   }
 };
+
+exports.extractIdFromToken = (req) => {
+  const authHeader = req.headers["authorization"] || null;
+  const token = authHeader ? authHeader.split(" ")[1] : null;
+  if (!token || token === "null" || token === "undefined") return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.PRIVATE_KEY);
+    return decoded.id;
+  } catch (err) {
+    return null;
+  }
+};

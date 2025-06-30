@@ -13,13 +13,20 @@ const updateValidator =
 const updateUserTypeValidator =
   require("../validations/userValidations").updateUserTypeValidator;
 const dotenv = require("dotenv");
+const images = require("../db/models/images");
+const Documents = require("../db/models/documents");
 dotenv.config();
 
 exports.register = async function (req, res) {
   try {
-    const { errors, isValid } = await registrationValidator(req.body);
+    const documents = req.body.documents ? req.body.documents : [];
+    const { errors, isValid, validDocumentIds } = await registrationValidator(
+      req.body,
+      documents
+    );
     console.log("errors : ", errors);
     console.log("isValid : ", isValid);
+    console.log("validDocumentIds : ", validDocumentIds);
 
     if (isValid) {
       const firstName = req.body.firstName;
@@ -40,6 +47,7 @@ exports.register = async function (req, res) {
         email,
         user_type,
         profilePicture: image,
+        documents: validDocumentIds,
         password: hashed_password,
       });
 
@@ -49,8 +57,24 @@ exports.register = async function (req, res) {
         lastName: new_user.lastName,
         email: new_user.email,
         user_type: new_user.user_type,
-        image,
+        profilePicture: new_user.profilePicture,
+        documents: new_user.documents,
       };
+
+      //Saving user id in images record
+      if (image) {
+        const imageRecord = await images.findById(image);
+        imageRecord.uploadedBy = new_user._id;
+        await imageRecord.save();
+      }
+
+      //Saving user id in documents record
+      if (validDocumentIds && validDocumentIds.length > 0) {
+        await Documents.updateMany(
+          { _id: { $in: validDocumentIds } },
+          { $set: { uploadedBy: new_user._id } }
+        );
+      }
 
       //Send email for email verification
 
@@ -328,6 +352,11 @@ exports.updateuserTypes = async function (req, res) {
 exports.updateUser = async function (req, res) {
   try {
     const user_id = extractUserIdFromToken(req);
+    const documents = req.body ? req.body.documents : null;
+    const deletedDocuments = req.body
+      ? req.body.deletedDocuments
+      : null;
+
     if (!user_id) {
       let response = error_function({
         status: 400,
@@ -335,10 +364,10 @@ exports.updateUser = async function (req, res) {
       });
       return res.status(response.statusCode).send(response);
     }
-    const { errors, isValid } = await updateValidator(req.body, user_id);
+    const { errors, isValid, validDocumentIdsToAdd, cleanRemoveDocumentIds } =
+      await updateValidator(req.body, user_id, documents, deletedDocuments);
 
     if (isValid) {
-
       const allowedFields = ["firstName", "lastName", "profilePicture"]; // you can expand this list
       const updates = {};
 
@@ -347,6 +376,64 @@ exports.updateUser = async function (req, res) {
           updates[field] = req.body[field];
         }
       });
+
+      if (
+        (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
+        (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+      ) {
+        const user = await users.findById(user_id).select("documents");
+        if (!user) {
+          return res.status(404).send(
+            error_function({
+              status: 404,
+              message: "User not found",
+            })
+          );
+        }
+        const currentDocumentIds = user.documents.map((id) => id.toString());
+
+        // Remove unwanted documents
+        const remainingDocuments = currentDocumentIds.filter(
+          (id) => !cleanRemoveDocumentIds.includes(id)
+        );
+
+        // Add new documents (avoid duplicates)
+        const finalDocumentIds = Array.from(
+          new Set([
+            ...remainingDocuments,
+            ...validDocumentIdsToAdd.map((id) => id.toString()),
+          ])
+        );
+
+        updates.documents = finalDocumentIds;
+
+        // 1. Convert all IDs to string for comparison
+        const addIds = validDocumentIdsToAdd.map((id) => id.toString());
+        const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
+
+        // 2. Filter out common IDs — these should NOT be deleted
+        const finalRemoveDocumentIds = removeIds.filter(
+          (id) => !addIds.includes(id)
+        );
+
+        // 3. Proceed only if there are non-conflicting IDs left to delete
+        if (finalRemoveDocumentIds.length > 0) {
+          const documentsToDelete = await Documents.find({
+            _id: { $in: finalRemoveDocumentIds },
+          });
+
+          for (const doc of documentsToDelete) {
+            const filePath = path.join(__dirname, "..", doc.path);
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Failed to delete file ${filePath}:`, err);
+              }
+            });
+          }
+
+          await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
+        }
+      }
 
       const updatedUser = await users
         .findByIdAndUpdate(

@@ -3,10 +3,6 @@ const path = require("path");
 const fs = require("fs");
 
 function getUploadMiddleware(folderName = "general") {
-  // const uploadDir = path.join(__dirname, `../uploads/${folderName}`);
-
-  // Ensure directory exists
-  // if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -33,9 +29,9 @@ function getUploadMiddleware(folderName = "general") {
   });
 
   const fileFilter = (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp", "application/pdf", "application/msword", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (allowedTypes.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Only image files are allowed"), false);
+    else cb(new Error("Invalid file format"), false);
   };
 
   return multer({ storage, fileFilter });
