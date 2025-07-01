@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const getUploadMiddleware = require("../utils/uploadMiddleware");
-const uploadUserImage = getUploadMiddleware("users");
+// const getUploadMiddleware = require("../utils/uploadMiddleware");
+// const uploadUserImage = getUploadMiddleware("users");
 const userController = require('../controllers/userController');
 const access_control = require('../utils/access-control').accessControl;
 
@@ -11,7 +11,7 @@ const setAccessControl = (access_type) => {
     }
 }
 
-router.post('/', setAccessControl('*'),uploadUserImage.single("image"), userController.register);
+router.post('/drivers', setAccessControl('*'), userController.registerDrivers);
 router.put('/', setAccessControl('*'), userController.updateUser);
 router.get('/', setAccessControl('*') , userController.getRegisteredUsers);
 router.get('/userTypes', setAccessControl('*'), userController.getUserTypes);

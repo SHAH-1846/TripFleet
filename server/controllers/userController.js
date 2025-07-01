@@ -6,103 +6,160 @@ const user_types = require("../db/models/user_types");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
-const registrationValidator =
-  require("../validations/userValidations").registrationValidator;
+const extractIdFromToken = require("../utils/utils").extractIdFromToken;
+const registerDriversValidator =
+  require("../validations/userValidations").registerDriversValidator;
 const updateValidator =
   require("../validations/userValidations").updateValidator;
 const updateUserTypeValidator =
   require("../validations/userValidations").updateUserTypeValidator;
 const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
 const images = require("../db/models/images");
 const Documents = require("../db/models/documents");
+const deleteFile = require("../utils/utils").deleteFile;
+const { Types } = require("mongoose");
+const OTP = require("../db/models/otp");
+const vehicles = require("../db/models/vehicles");
 dotenv.config();
 
-exports.register = async function (req, res) {
+exports.registerDrivers = async function (req, res) {
   try {
+    let id = extractIdFromToken(req);
+    if (!id) {
+      let response = error_function({
+        status: 404,
+        message: "Access denied: Missing authentication token",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    //Finding OTP record based on this access_token
+    const otpRecord = await OTP.findOne({ _id: id });
+    if (!otpRecord) {
+      let response = error_function({
+        status: 400,
+        message: "Verify phone number to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+    req.body.phone = otpRecord.phone;
+
     const documents = req.body.documents ? req.body.documents : [];
-    const { errors, isValid, validDocumentIds } = await registrationValidator(
+
+    const { errors, isValid, validImageIds } = await registerDriversValidator(
       req.body,
       documents
     );
-    console.log("errors : ", errors);
-    console.log("isValid : ", isValid);
-    console.log("validDocumentIds : ", validDocumentIds);
 
     if (isValid) {
-      const firstName = req.body.firstName;
-      const lastName = req.body.lastName;
+      //User datas
+      const name = req.body.name;
+      const phone = otpRecord.phone;
+      const whatsappNumber = req.body.whatsappNumber;
       const email = req.body.email;
-      const password = req.body.password;
-      const cofirmPassword = req.body.cofirmPassword;
-      const user_type = req.body.user_type;
-      const image = req.body.image;
+      const user_type = "68484d1eefb856d41ac28c56"; //ObjectId for driver user_type
+      const drivingLicense = req.body.drivingLicense; //ObjectId from the documents collection
+      const profilePicture = req.body.profilePicture; //ObjectId from the images collection
 
-      let salt = await bcrypt.genSalt(10);
-      let hashed_password = await bcrypt.hash(password, salt);
-      console.log("hashed_password : ", hashed_password);
+      //Vehicle Datas
+      const vehicleNumber = req.body.vehicleNumber;
+      const vehicleType = req.body.vehicleType; //ObjectId from vehicle_types collection
+      const vehicleBodyType = req.body.vehicleBodyType; //ObjectId from vehicle_body_types collection
+      const vehicleCapacity = req.body.vehicleCapacity;
+      const goodsAccepted = req.body.goodsAccepted; //Boolean value
+      const registrationCertificate = req.body.registrationCertificate; //ObjectId from the documents collection
+      const truckImages = req.body.truckImages; //An array of ObjectIds from the images collection
+
+      //Terms and conditions and privacy policy
+      const termsAndConditionsAccepted = req.body.termsAndConditionsAccepted; //Boolean value
+      const privacyPolicyAccepted = req.body.privacyPolicyAccepted; //Boolean value
+
+      //Normalizing vehicle number
+      function normalizeVehicleNumber(vehicleNumber) {
+        return vehicleNumber.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+      }
+      let vehicle_number = normalizeVehicleNumber(vehicleNumber);
 
       let new_user = await users.create({
-        firstName,
-        lastName,
+        name,
+        phone,
+        whatsappNumber,
         email,
         user_type,
-        profilePicture: image,
-        documents: validDocumentIds,
-        password: hashed_password,
+        drivingLicense,
+        profilePicture,
+        termsAndConditionsAccepted,
+        privacyPolicyAccepted,
       });
 
-      const userResponse = {
-        _id: new_user._id,
-        firstName: new_user.firstName,
-        lastName: new_user.lastName,
-        email: new_user.email,
-        user_type: new_user.user_type,
-        profilePicture: new_user.profilePicture,
-        documents: new_user.documents,
-      };
+      let new_vehicle = await vehicles.create({
+        user: new_user._id,
+        vehicleNumber: vehicle_number,
+        vehicleType,
+        vehicleBodyType,
+        vehicleCapacity,
+        goodsAccepted,
+        registrationCertificate,
+        images: validImageIds,
+      });
 
-      //Saving user id in images record
-      if (image) {
-        const imageRecord = await images.findById(image);
-        imageRecord.uploadedBy = new_user._id;
-        await imageRecord.save();
+      //Save user_id in drivingLicense record in the documents collection
+      if (drivingLicense) {
+        const drivingLicenseRecord = await Documents.findById(drivingLicense);
+        drivingLicense.uploadedBy = new_user._id;
+        await drivingLicenseRecord.save();
       }
 
-      //Saving user id in documents record
-      if (validDocumentIds && validDocumentIds.length > 0) {
-        await Documents.updateMany(
-          { _id: { $in: validDocumentIds } },
+      //Save user_id in registrationCertificate record in documents collection
+      if (registrationCertificate) {
+        const registrationCertificateRecord = await Documents.findById(
+          registrationCertificate
+        );
+        registrationCertificateRecord.uploadedBy = new_user._id;
+        await registrationCertificateRecord.save();
+      }
+
+      //Saving user id in truckImages record in images collection
+      if (validImageIds && validImageIds.length > 0) {
+        await images.updateMany(
+          { _id: { $in: validImageIds } },
           { $set: { uploadedBy: new_user._id } }
         );
       }
 
       //Send email for email verification
 
-      if (new_user) {
-        let response = success_function({
-          status: 201,
-          data: userResponse,
-          message: "User registered successfully",
-        });
-        res.status(response.statusCode).send(response);
-        return;
-      } else {
-        let response = error_function({
-          status: 400,
-          message: "User registration failed",
-        });
-        return res.status(response.statusCode).send(response);
-      }
+      //Genarating access token for further authentication and authorization
+      let access_token = jwt.sign(
+        { user_id: new_user._id },
+        process.env.PRIVATE_KEY,
+        { expiresIn: "10d" }
+      );
+
+      let response = success_function({
+        status: 201,
+        data: access_token,
+        message: "User registered successfully",
+      });
+      return res.status(response.statusCode).send(response);
     } else {
       // Also handle cleanup here in case of unexpected errors
-      if (req.file && req.file.path) {
-        fs.unlink(
-          path.join(__dirname, "../uploads/users", req.file.filename),
-          (err) => {
-            if (err) console.error("Failed to delete uploaded image:", err);
-          }
-        );
-      }
+      // if (req.file && req.file.path) {
+      //   fs.unlink(
+      //     path.join(__dirname, "../uploads/users", req.file.filename),
+      //     (err) => {
+      //       if (err) console.error("Failed to delete uploaded image:", err);
+      //     }
+      //   );
+      // }
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
+        drivingLicense: req.body.drivingLicense,
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
+
       let response = error_function({
         status: 400,
         message: "Validation Failed",
@@ -123,6 +180,12 @@ exports.register = async function (req, res) {
           : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
+        drivingLicense: req.body.drivingLicense,
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
       return;
     } else {
       console.log("registration error : ", error);
@@ -131,6 +194,12 @@ exports.register = async function (req, res) {
         message: error.message ? error.message : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
+        drivingLicense: req.body.drivingLicense,
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
       return;
     }
   }
@@ -353,9 +422,7 @@ exports.updateUser = async function (req, res) {
   try {
     const user_id = extractUserIdFromToken(req);
     const documents = req.body ? req.body.documents : null;
-    const deletedDocuments = req.body
-      ? req.body.deletedDocuments
-      : null;
+    const deletedDocuments = req.body ? req.body.deletedDocuments : null;
 
     if (!user_id) {
       let response = error_function({
@@ -488,3 +555,50 @@ exports.updateUser = async function (req, res) {
     }
   }
 };
+
+async function cleanupUploadedAssets({
+  profilePicture,
+  drivingLicense,
+  registrationCertificate,
+  truckImages,
+}) {
+  try {
+    // Delete profile picture
+    if (Types.ObjectId.isValid(profilePicture)) {
+      const img = await images.findById(profilePicture);
+      if (img) {
+        deleteFile(img.path); // delete from uploads
+        await images.deleteOne({ _id: profilePicture }); // delete from DB
+      }
+    }
+
+    // Delete driving license
+    if (Types.ObjectId.isValid(drivingLicense)) {
+      const doc = await Documents.findById(drivingLicense);
+      if (doc) {
+        deleteFile(doc.path); // delete file
+        await Documents.deleteOne({ _id: drivingLicense });
+      }
+    }
+
+    // Delete registration certificate
+    if (Types.ObjectId.isValid(registrationCertificate)) {
+      const doc = await Documents.findById(registrationCertificate);
+      if (doc) {
+        deleteFile(doc.path); // delete file
+        await Documents.deleteOne({ _id: registrationCertificate });
+      }
+    }
+
+    // Delete multiple truck images
+    if (Array.isArray(truckImages)) {
+      const truckImageDocs = await images.find({ _id: { $in: truckImages } });
+      for (let img of truckImageDocs) {
+        deleteFile(img.path); // delete image file
+      }
+      await images.deleteMany({ _id: { $in: truckImages } }); // delete records
+    }
+  } catch (error) {
+    console.error("❌ Error during cleanup:", error);
+  }
+}

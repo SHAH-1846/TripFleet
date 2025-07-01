@@ -13,6 +13,7 @@ const { sendSMS } = require("../utils/sms");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
+const { extractUserIdFromToken } = require("../utils/utils");
 dotenv.config();
 
 exports.login = async function (req, res) {
@@ -192,22 +193,15 @@ exports.verifyOtp = async (req, res) => {
     if (isValid) {
       const id = extractIdFromToken(req);
 
-      if (!id) {
-        let response = error_function({
-          status: 400,
-          message: "Not allowed",
-        });
-        return res.status(response.statusCode).send(response);
-      }
-
-      const { otp } = req.body;
-
       const otpRecord = await OTP.findOne({ _id: id });
       if (!otpRecord) {
         return res
           .status(400)
           .send(error_function({ status: 400, message: "OTP not requested" }));
       }
+
+      const otp = req.body.otp;
+      const phone = otpRecord.phone;
 
       // Check expiry (e.g., 5 minutes)
       const now = new Date();
@@ -228,11 +222,24 @@ exports.verifyOtp = async (req, res) => {
           .send(error_function({ status: 400, message: "Invalid OTP" }));
       }
 
-      let phone_verified_token = jwt.sign(
-        { id: otpRecord._id },
-        process.env.PRIVATE_KEY,
-        { expiresIn: "10d" }
-      );
+      //Finding user based on phone number
+      let user = await users.findOne({ phone });
+      let phone_verified_token;
+      if (user) {
+        //User already exists and needs to login
+        phone_verified_token = jwt.sign(
+          { id: user._id },
+          process.env.PRIVATE_KEY,
+          { expiresIn: "10d" }
+        );
+      } else {
+        //User not exists and needs to register
+        phone_verified_token = jwt.sign(
+          { id: otpRecord._id },
+          process.env.PRIVATE_KEY,
+          { expiresIn: "10d" }
+        );
+      }
 
       return res.status(200).send(
         success_function({

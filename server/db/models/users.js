@@ -2,16 +2,30 @@ const mongoose = require("mongoose");
 
 const users = new mongoose.Schema(
   {
-    firstName: {
+    name: {
       type: String,
       required: true,
       trim: true,
     },
-    lastName: {
+    phone: {
       type: String,
       required: true,
       trim: true,
     },
+    whatsappNumber: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    drivingLicense: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "documents",
+    },
+    // lastName: {
+    //   type: String,
+    //   required: true,
+    //   trim: true,
+    // },
     profilePicture: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "images",
@@ -40,7 +54,6 @@ const users = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
     },
     documents: [
       {
@@ -48,6 +61,8 @@ const users = new mongoose.Schema(
         ref: "documents",
       },
     ],
+    termsAndConditionsAccepted: { type: Boolean, default: false },
+    privacyPolicyAccepted: { type: Boolean, default: false },
   },
   {
     timestamps: true,

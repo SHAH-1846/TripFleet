@@ -7,40 +7,62 @@ const vehicles = new mongoose.Schema(
       ref: "users",
       required: true,
     },
+
     vehicleNumber: {
       type: String,
       required: true,
       unique: true,
       trim: true,
     },
+
     vehicleType: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "vehicle_types",
       required: true,
     },
-    brand: { type: String, required: true },
-    model: { type: String, required: true },
+
+    vehicleBodyType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "vehicle_body_types",
+      required: true,
+    },
+
+    goodsAccepted: {
+      type: Boolean,
+      default: true,
+    },
+
+    vehicleCapacity: { type: Number, required: true }, // in kg or liters
+    registrationYear: { type: Number },
+
+    registrationCertificate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "documents",
+    },
+
+    status: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "vehicle_status",
+      default: "684bbcb5a9dcd0556d12b2a5",
+    },
+
+    brand: { type: String },
+    model: { type: String },
     color: { type: String },
+
     images: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "images",
       },
     ],
+    
     documents: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "documents",
       },
     ],
-    capacity: { type: Number }, // in kg or liters
-    registrationYear: { type: Number },
-    status: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "vehicle_status",
-      default: "684bbcb5a9dcd0556d12b2a5",
-      required: true,
-    },
   },
   {
     timestamps: true,
