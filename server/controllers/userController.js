@@ -373,10 +373,10 @@ exports.getProfileDatas = async function (req, res) {
         });
         return res.status(response.statusCode).send(response);
       }
-    }else {
+    } else {
       let response = error_function({
-        status : 400,
-        message : "Please login to continue"
+        status: 400,
+        message: "Please login to continue",
       });
       return res.status(response.statusCode).send(response);
     }
@@ -443,8 +443,8 @@ exports.getRegisteredUsers = async function (req, res) {
     if (keyword) {
       filters.push({
         $or: [
-          { firstName: { $regex: keyword, $options: "i" } },
-          { lastName: { $regex: keyword, $options: "i" } },
+          { name: { $regex: keyword, $options: "i" } },
+          { email: { $regex: keyword, $options: "i" } },
         ],
       });
     }
