@@ -346,6 +346,64 @@ exports.registerCustomers = async function (req, res) {
   }
 };
 
+exports.getProfileDatas = async function (req, res) {
+  try {
+    const userId = extractUserIdFromToken(req);
+
+    if (userId) {
+      const userDatas = await users
+        .findOne({ _id: userId })
+        .select("-password -__v")
+        .populate({
+          path: "user_type profilePicture",
+          select: "-password -__v", // Only fetch the 'name' field from UserType
+        });
+
+      if (userDatas) {
+        let response = success_function({
+          status: 200,
+          data: userDatas,
+          message: "User records fetched successfully",
+        });
+        return res.status(response.statusCode).send(response);
+      } else {
+        let response = error_function({
+          status: 404,
+          message: "User record not found",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+    }else {
+      let response = error_function({
+        status : 400,
+        message : "Please login to continue"
+      });
+      return res.status(response.statusCode).send(response);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Error getting profile data : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
 exports.getRegisteredUsers = async function (req, res) {
   try {
     const userId = req.query.userId;
@@ -449,7 +507,7 @@ exports.getRegisteredUsers = async function (req, res) {
       res.status(response.statusCode).send(response);
       return;
     } else {
-      console.log("registration error : ", error);
+      console.log("Registered users datas getting error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",

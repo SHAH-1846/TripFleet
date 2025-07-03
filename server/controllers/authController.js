@@ -228,7 +228,7 @@ exports.verifyOtp = async (req, res) => {
       if (user) {
         //User already exists and needs to login
         phone_verified_token = jwt.sign(
-          { id: user._id },
+          { user_id: user._id },
           process.env.PRIVATE_KEY,
           { expiresIn: "10d" }
         );
