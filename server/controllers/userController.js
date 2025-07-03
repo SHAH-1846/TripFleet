@@ -9,6 +9,8 @@ const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
 const extractIdFromToken = require("../utils/utils").extractIdFromToken;
 const registerDriversValidator =
   require("../validations/userValidations").registerDriversValidator;
+const registerCustomersValidator =
+  require("../validations/userValidations").registerCustomersValidator;
 const updateValidator =
   require("../validations/userValidations").updateValidator;
 const updateUserTypeValidator =
@@ -107,7 +109,7 @@ exports.registerDrivers = async function (req, res) {
       //Save user_id in drivingLicense record in the documents collection
       if (drivingLicense) {
         const drivingLicenseRecord = await Documents.findById(drivingLicense);
-        drivingLicense.uploadedBy = new_user._id;
+        drivingLicenseRecord.uploadedBy = new_user._id;
         await drivingLicenseRecord.save();
       }
 
@@ -124,6 +126,14 @@ exports.registerDrivers = async function (req, res) {
       if (validImageIds && validImageIds.length > 0) {
         await images.updateMany(
           { _id: { $in: validImageIds } },
+          { $set: { uploadedBy: new_user._id } }
+        );
+      }
+
+      //Save user id in profile picture record in images collection
+      if (profilePicture) {
+        await images.updateMany(
+          { _id: profilePicture },
           { $set: { uploadedBy: new_user._id } }
         );
       }
@@ -188,7 +198,7 @@ exports.registerDrivers = async function (req, res) {
       });
       return;
     } else {
-      console.log("registration error : ", error);
+      console.log("Driver registration error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
@@ -199,6 +209,137 @@ exports.registerDrivers = async function (req, res) {
         drivingLicense: req.body.drivingLicense,
         registrationCertificate: req.body.registrationCertificate,
         truckImages: req.body.truckImages || [],
+      });
+      return;
+    }
+  }
+};
+
+exports.registerCustomers = async function (req, res) {
+  try {
+    let id = extractIdFromToken(req);
+    if (!id) {
+      let response = error_function({
+        status: 404,
+        message: "Access denied: Missing authentication token",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    //Finding OTP record based on this access_token
+    const otpRecord = await OTP.findOne({ _id: id });
+    if (!otpRecord) {
+      let response = error_function({
+        status: 400,
+        message: "Verify phone number to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+    req.body.phone = otpRecord.phone;
+
+    const documents = req.body.documents ? req.body.documents : [];
+
+    const { errors, isValid } = await registerCustomersValidator(
+      req.body,
+      documents
+    );
+
+    if (isValid) {
+      //User datas
+      const name = req.body.name;
+      const email = req.body.email;
+      const phone = otpRecord.phone;
+      const whatsappNumber = req.body.whatsappNumber;
+      const profilePicture = req.body.profilePicture; //ObjectId from the images collection
+      const user_type = "68484d1eefb856d41ac28c55"; //ObjectId for driver user_type
+
+      //Terms and conditions and privacy policy
+      const termsAndConditionsAccepted = req.body.termsAndConditionsAccepted; //Boolean value
+      const privacyPolicyAccepted = req.body.privacyPolicyAccepted; //Boolean value
+
+      let new_user = await users.create({
+        name,
+        phone,
+        whatsappNumber,
+        email,
+        user_type,
+        profilePicture,
+        termsAndConditionsAccepted,
+        privacyPolicyAccepted,
+      });
+
+      //Save user id in profile picture record in images collection
+      if (profilePicture) {
+        await images.updateMany(
+          { _id: profilePicture },
+          { $set: { uploadedBy: new_user._id } }
+        );
+      }
+
+      //Send email for email verification
+
+      //Genarating access token for further authentication and authorization
+      let access_token = jwt.sign(
+        { user_id: new_user._id },
+        process.env.PRIVATE_KEY,
+        { expiresIn: "10d" }
+      );
+
+      let response = success_function({
+        status: 201,
+        data: access_token,
+        message: "User registered successfully",
+      });
+      return res.status(response.statusCode).send(response);
+    } else {
+      // Also handle cleanup here in case of unexpected errors
+      // if (req.file && req.file.path) {
+      //   fs.unlink(
+      //     path.join(__dirname, "../uploads/users", req.file.filename),
+      //     (err) => {
+      //       if (err) console.error("Failed to delete uploaded image:", err);
+      //     }
+      //   );
+      // }
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
+      });
+      let response = error_function({
+        status: 400,
+        message: "Validation Failed",
+      });
+      response.errors = errors;
+
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
+        drivingLicense: req.body.drivingLicense,
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
+      return;
+    } else {
+      console.log("Customer registration error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        profilePicture: req.body.profilePicture,
       });
       return;
     }

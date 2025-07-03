@@ -14,6 +14,162 @@ const user_types = require("../db/models/user_types");
 const vehicle_types = require("../db/models/vehicle_types");
 const vehicle_body_types = require("../db/models/vehicle_body_types");
 
+exports.registerCustomersValidator = async function (data, documents) {
+  try {
+    let errors = {};
+
+    //User datas for validation
+    data = !isEmpty(data) ? data : "";
+    data.name = !isEmpty(data.name) ? data.name : "";
+    data.phone = !isEmpty(data.phone) ? data.phone : "";
+
+    data.whatsappNumber = !isEmpty(data.whatsappNumber)
+      ? data.whatsappNumber
+      : "";
+    data.email = !isEmpty(data.email) ? data.email : "";
+
+    data.profilePicture = !isEmpty(data.profilePicture)
+      ? data.profilePicture
+      : "";
+
+    //Terms and conditions and privacy policy
+    data.termsAndConditionsAccepted = !isEmpty(data.termsAndConditionsAccepted)
+      ? data.termsAndConditionsAccepted
+      : "";
+    data.privacyPolicyAccepted = !isEmpty(data.privacyPolicyAccepted)
+      ? data.privacyPolicyAccepted
+      : "";
+
+    if (isEmpty(data)) {
+      errors.data = "Please complete all required fields to continue";
+    } else {
+
+      //Validating name
+      if (validator.isEmpty(data.name)) {
+        errors.name = "Name is required";
+      } else if (!validator.isLength(data.name, { min: 2, max: 30 })) {
+        errors.name = "Name must be between 2 and 30 charactors";
+      }
+
+      // Validate phone number
+      const userPhoneCount = await users.countDocuments({ phone: data.phone });
+
+      if (validator.isEmpty(data.phone)) {
+        errors.phone = "Phone number is required";
+      } else if (!validator.isMobilePhone(data.phone, "any")) {
+        errors.phone = "Invalid phone number format";
+      } else if (!/^\+?[1-9]\d{7,14}$/.test(data.phone)) {
+        // Optional stricter regex: starts with +, 8-15 digits
+        errors.phone =
+          "Please enter a valid international phone number (e.g. +919999999999)";
+      } else if (userPhoneCount > 0) {
+        errors.phone = "An account with this phone number already exists";
+      }
+
+      //Validate whatsappNumber
+      const userwhatsappNumberCount = await users.countDocuments({
+        whatsappNumber: data.whatsappNumber,
+      });
+
+      if (validator.isEmpty(data.whatsappNumber)) {
+        errors.whatsappNumber = "Whatsapp number is required";
+      } else if (!validator.isMobilePhone(data.whatsappNumber, "any")) {
+        errors.whatsappNumber = "Invalid whatsapp number format";
+      } else if (!/^\+?[1-9]\d{7,14}$/.test(data.whatsappNumber)) {
+        // Optional stricter regex: starts with +, 8-15 digits
+        errors.whatsappNumber =
+          "Please enter a valid international whatsapp number (e.g. +919999999999)";
+      } else if (userwhatsappNumberCount > 0) {
+        errors.whatsappNumber =
+          "An account with this whatsapp number already exists";
+      }
+
+      //Validating Email
+      let emailCount = await users.countDocuments({
+        email: { $regex: data.email, $options: "i" },
+      });
+
+      if (validator.isEmpty(data.email)) {
+        errors.email = "Email is required";
+      } else if (!validator.isLength(data.email, { min: 2, max: 30 })) {
+        errors.email = "Email must be between 2 and 30 charactors";
+      } else if (!validator.isEmail(data.email)) {
+        errors.email = "Invalid email";
+      } else if (isDisposable(data.email)) {
+        errors.email = "Disposable email addresses are not allowed";
+      } else if (isDisposableEmail(data.email)) {
+        errors.email =
+          "Please use a real email address — temporary email services are not supported";
+      } else if (isTemporaryEmail(data.email)) {
+        errors.email =
+          "For security reasons, disposable email addresses are not accepted";
+      } else if (emailCount > 0) {
+        errors.email = "An account with this email already exists";
+      }
+
+      //Validating profilePicture
+      if (validator.isEmpty(data.profilePicture)) {
+        errors.profilePicture = "Profile picture is required";
+      } else if (!Types.ObjectId.isValid(data.profilePicture)) {
+        errors.profilePicture =
+          "Profile picture must be a valid MongoDB ObjectId";
+      } else {
+        const profilePicture = await images.findById(data.profilePicture);
+        if (!profilePicture) {
+          errors.profilePicture = "Profile picture does not exist";
+        }
+      }
+
+      //Validating termsAndConditionsAccepted
+      if (
+        typeof data.termsAndConditionsAccepted === "undefined" ||
+        data.termsAndConditionsAccepted === null ||
+        data.termsAndConditionsAccepted === ""
+      ) {
+        errors.termsAndConditionsAccepted =
+          "Terms and conditions field is required";
+      } else if (typeof data.termsAndConditionsAccepted !== "boolean") {
+        // In case the frontend sends it as a string like "true" or "false", may want to allow it:
+        const normalized = String(
+          data.termsAndConditionsAccepted
+        ).toLowerCase();
+        if (normalized !== "true" && normalized !== "false") {
+          errors.termsAndConditionsAccepted =
+            "Terms and conditions field must be a boolean value (true or false)";
+        } else {
+          // Convert and assign normalized boolean
+          data.termsAndConditionsAccepted = normalized === "true";
+        }
+      }
+
+      if (
+        typeof data.privacyPolicyAccepted === "undefined" ||
+        data.privacyPolicyAccepted === null ||
+        data.privacyPolicyAccepted === ""
+      ) {
+        errors.privacyPolicyAccepted = "Privacy policy field is required";
+      } else if (typeof data.privacyPolicyAccepted !== "boolean") {
+        // In case the frontend sends it as a string like "true" or "false", may want to allow it:
+        const normalized = String(data.privacyPolicyAccepted).toLowerCase();
+        if (normalized !== "true" && normalized !== "false") {
+          errors.privacyPolicyAccepted =
+            "Privacy policy field must be a boolean value (true or false)";
+        } else {
+          // Convert and assign normalized boolean
+          data.privacyPolicyAccepted = normalized === "true";
+        }
+      }
+    }
+    return {
+      errors,
+      isValid: isEmpty(errors),
+    };
+  } catch (error) {
+    console.log("Customers registration Validation error : ", error);
+    return;
+  }
+};
+
 exports.registerDriversValidator = async function (data, documents) {
   try {
     let errors = {};
@@ -262,9 +418,9 @@ exports.registerDriversValidator = async function (data, documents) {
       }
 
       //Validating truckImages
-      if(isEmpty(data.truckImages)) {
+      if (isEmpty(data.truckImages)) {
         errors.truckImages = "Vehicle images are required";
-      }else if (data.truckImages && data.truckImages.length > 0) {
+      } else if (data.truckImages && data.truckImages.length > 0) {
         var validImageIds = [];
 
         if (!Array.isArray(data.truckImages)) {
@@ -298,9 +454,11 @@ exports.registerDriversValidator = async function (data, documents) {
         }
 
         // Fetch all matching images uploaded by the user
-        const foundImages = await images.find({
-          _id: { $in: validObjectIds },
-        }).select("_id");
+        const foundImages = await images
+          .find({
+            _id: { $in: validObjectIds },
+          })
+          .select("_id");
 
         const foundImageIds = foundImages.map((img) => img._id.toString());
 
@@ -469,7 +627,7 @@ exports.registerDriversValidator = async function (data, documents) {
       validImageIds,
     };
   } catch (error) {
-    console.log("Registration Validation error : ", error);
+    console.log("Drivers registration Validation error : ", error);
     return;
   }
 };

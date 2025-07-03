@@ -12,6 +12,7 @@ const setAccessControl = (access_type) => {
 }
 
 router.post('/drivers', setAccessControl('*'), userController.registerDrivers);
+router.post('/customers', setAccessControl('*'), userController.registerCustomers);
 router.put('/', setAccessControl('*'), userController.updateUser);
 router.get('/', setAccessControl('*') , userController.getRegisteredUsers);
 router.get('/userTypes', setAccessControl('*'), userController.getUserTypes);

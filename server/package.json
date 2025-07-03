@@ -26,7 +26,8 @@
     "seed:bookingStatus": "node db/seeders/bookingStatusSeeder.js up",
     "rollback:bookingStatus": "node db/seeders/bookingStatusSeeder.js down",
     "seed:vehicleBodyTypes" : "node db/seeders/vehicleBodyTypeSeeder.js up",
-    "rollback:vehicleBodyTypes" : "node db/seeders/vehicleBodyTypeSeeder.js down"
+    "rollback:vehicleBodyTypes" : "node db/seeders/vehicleBodyTypeSeeder.js down",
+    "cleanupOrphanedFiles" : "node utils/cleanupOrphanedFiles.js"
   },
   "author": "",
   "license": "ISC",

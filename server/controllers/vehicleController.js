@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const VehicleType = require("../db/models/vehicle_types");
+const vehicleBodyType = require("../db/models/vehicle_body_types");
 const Vehicle = require("../db/models/vehicles");
 const VehicleStatus = require("../db/models/vehicle_status");
 const Image = require("../db/models/images");
@@ -575,6 +576,49 @@ exports.listVehicleTypes = async (req, res) => {
       return;
     } else {
       console.log("Vehicle types listing error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+// List all vehicle body types
+exports.listVehicleBodyTypes = async (req, res) => {
+  try {
+    const types = await vehicleBodyType.find({ status: "active" }).select("-__v");
+
+    if (types) {
+      let response = success_function({
+        status: 200,
+        data: types,
+        message: "Vehicle body types retrieved successfully",
+      });
+      return res.status(response.statusCode).send(response);
+    } else {
+      let response = error_function({
+        status: 404,
+        message: "Vehicle body types not found",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("Vehicle body types listing error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
