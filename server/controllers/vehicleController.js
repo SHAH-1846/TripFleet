@@ -10,6 +10,7 @@ const mongoose = require("mongoose");
 const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
+const cleanupUploadedAssets = require("../utils/utils").cleanupUploadedAssets;
 const vehicleCreationValidator =
   require("../validations/vehicleValidations").vehicleCreationValidator;
 const vehicleUpdateValidator =
@@ -24,32 +25,30 @@ dotenv.config();
 exports.createVehicle = async (req, res) => {
   try {
     let user_id = extractUserIdFromToken(req);
-    let images = req.body.images ? req.body.images : [];
-    let documents = req.body.documents ? req.body.documents : [];
 
-    const { errors, isValid, validImageIds, validDocumentIds } = await vehicleCreationValidator(
+    if(!user_id) {
+      let response = error_function({
+        status : 400,
+        message : "Please login to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    const { errors, isValid, validImageIds } = await vehicleCreationValidator(
       req.body,
-      user_id,
-      images,
-      documents,
+      user_id
     );
 
     if (isValid) {
       const {
         vehicleNumber,
         vehicleType,
-        brand,
-        model,
-        color,
-        capacity,
-        registrationYear,
+        vehicleBodyType,
+        vehicleCapacity,
+        goodsAccepted,
+        registrationCertificate,
+        truckImages,
       } = req.body;
-
-      // Ensure imageIds is an array of valid ObjectId strings
-      const imagesArray =
-        Array.isArray(images) && images.length > 0
-          ? images.map((id) => new mongoose.Types.ObjectId(id))
-          : [];
 
       function normalizeVehicleNumber(vehicleNumber) {
         return vehicleNumber.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(); // Removes -, space, etc.
@@ -57,18 +56,33 @@ exports.createVehicle = async (req, res) => {
 
       let vehicle_number = normalizeVehicleNumber(vehicleNumber);
 
-      const newVehicle = await Vehicle.create({
+      const newVehicle = await vehicles.create({
         user: user_id,
         vehicleNumber: vehicle_number,
         vehicleType,
-        brand,
-        model,
-        color,
-        capacity,
-        registrationYear,
+        vehicleBodyType,
+        vehicleCapacity,
+        goodsAccepted,
+        registrationCertificate,
         images: validImageIds,
-        documents : validDocumentIds,
       });
+
+      //Save user_id in registrationCertificate record in documents collection
+      if (registrationCertificate) {
+        const registrationCertificateRecord = await Documents.findById(
+          registrationCertificate
+        );
+        registrationCertificateRecord.uploadedBy = user_id;
+        await registrationCertificateRecord.save();
+      }
+
+      //Saving user id in truckImages record in images collection
+      if (validImageIds && validImageIds.length > 0) {
+        await Image.updateMany(
+          { _id: { $in: validImageIds } },
+          { $set: { uploadedBy: user_id } }
+        );
+      }
 
       if (newVehicle) {
         let response = success_function({
@@ -85,15 +99,10 @@ exports.createVehicle = async (req, res) => {
         return res.status(response.statusCode).send(response);
       }
     } else {
-      // Also handle cleanup here in case of unexpected errors
-      if (req.file && req.file.path) {
-        fs.unlink(
-          path.join(__dirname, "../uploads/vehicles", req.file.filename),
-          (err) => {
-            if (err) console.error("Failed to delete uploaded image:", err);
-          }
-        );
-      }
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
       let response = error_function({
         status: 400,
         message: "Validation failed",
@@ -112,6 +121,10 @@ exports.createVehicle = async (req, res) => {
           : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
       return;
     } else {
       console.log("Vehicle registration error : ", error);
@@ -120,6 +133,10 @@ exports.createVehicle = async (req, res) => {
         message: error.message ? error.message : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.truckImages || [],
+      });
       return;
     }
   }
@@ -135,16 +152,22 @@ exports.updateVehicle = async (req, res) => {
 
     const { vehicleId } = req.params;
 
-    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds, validDocumentIdsToAdd, cleanRemoveDocumentIds} =
-      await vehicleUpdateValidator(
-        req.body,
-        user_id,
-        vehicleId,
-        images,
-        deletedImages,
-        documents,
-        deletedDocuments
-      );
+    const {
+      errors,
+      isValid,
+      validImageIdsToAdd,
+      cleanRemoveImageIds,
+      validDocumentIdsToAdd,
+      cleanRemoveDocumentIds,
+    } = await vehicleUpdateValidator(
+      req.body,
+      user_id,
+      vehicleId,
+      images,
+      deletedImages,
+      documents,
+      deletedDocuments
+    );
 
     if (isValid) {
       const updateData = req.body;
@@ -214,7 +237,7 @@ exports.updateVehicle = async (req, res) => {
         }
       }
 
-           if (
+      if (
         (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
         (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
       ) {
@@ -589,7 +612,9 @@ exports.listVehicleTypes = async (req, res) => {
 // List all vehicle body types
 exports.listVehicleBodyTypes = async (req, res) => {
   try {
-    const types = await vehicleBodyType.find({ status: "active" }).select("-__v");
+    const types = await vehicleBodyType
+      .find({ status: "active" })
+      .select("-__v");
 
     if (types) {
       let response = success_function({

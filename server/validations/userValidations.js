@@ -43,7 +43,6 @@ exports.registerCustomersValidator = async function (data, documents) {
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
     } else {
-
       //Validating name
       if (validator.isEmpty(data.name)) {
         errors.name = "Name is required";
@@ -632,20 +631,16 @@ exports.registerDriversValidator = async function (data, documents) {
   }
 };
 
-exports.updateValidator = async function (
-  data,
-  user_id,
-  documents,
-  deletedDocuments
-) {
+exports.updateValidator = async function (data, user_id) {
   try {
     let errors = {};
-    let validDocumentIdsToAdd = [];
-    let cleanRemoveDocumentIds = [];
 
     data = !isEmpty(data) ? data : "";
-    data.firstName = !isEmpty(data.firstName) ? data.firstName : "";
-    data.lastName = !isEmpty(data.lastName) ? data.lastName : "";
+    data.name = !isEmpty(data.name) ? data.name : "";
+    data.whatsappNumber = !isEmpty(data.whatsappNumber)
+      ? data.whatsappNumber
+      : "";
+    data.email = !isEmpty(data.email) ? data.email : "";
     data.profilePicture = !isEmpty(data.profilePicture)
       ? data.profilePicture
       : "";
@@ -663,126 +658,73 @@ exports.updateValidator = async function (
         if (!userExists) errors.user = "User not found";
       }
 
-      if (data.firstName) {
-        //Validating FirstName
-        if (validator.isEmpty(data.firstName)) {
-          errors.firstName = "First Name is required";
-        } else if (!validator.isLength(data.firstName, { min: 2, max: 30 })) {
-          errors.firstName = "First Name must be between 2 and 30 charactors";
+      if (data.name) {
+        //Validating name
+        if (validator.isEmpty(data.name)) {
+          errors.name = "Name is required";
+        } else if (!validator.isLength(data.name, { min: 2, max: 30 })) {
+          errors.name = "Name must be between 2 and 30 charactors";
         }
       }
 
-      if (data.lastName) {
-        //Validating LastName
-        if (validator.isEmpty(data.lastName)) {
-          errors.lastName = "Last Name is required";
-        } else if (!validator.isLength(data.lastName, { min: 2, max: 30 })) {
-          errors.lastName = "Last Name must be between 2 and 30 charactors";
+      //Validate whatsappNumber
+      if (data.whatsappNumber) {
+        const userwhatsappNumberCount = await users.countDocuments({
+          whatsappNumber: data.whatsappNumber,
+          _id: { $ne: user_id }, // Exclude current user's ID
+        });
+
+        if (validator.isEmpty(data.whatsappNumber)) {
+          errors.whatsappNumber = "Whatsapp number is required";
+        } else if (!validator.isMobilePhone(data.whatsappNumber, "any")) {
+          errors.whatsappNumber = "Invalid whatsapp number format";
+        } else if (!/^\+?[1-9]\d{7,14}$/.test(data.whatsappNumber)) {
+          // Optional stricter regex: starts with +, 8-15 digits
+          errors.whatsappNumber =
+            "Please enter a valid international whatsapp number (e.g. +919999999999)";
+        } else if (userwhatsappNumberCount > 0) {
+          errors.whatsappNumber =
+            "An account with this whatsapp number already exists";
         }
       }
 
-      //Validating image
-      if (!validator.isEmpty(data.profilePicture)) {
-        if (!Types.ObjectId.isValid(data.profilePicture)) {
+      //Validating email
+      if (data.email) {
+        let emailCount = await users.countDocuments({
+          email: { $regex: data.email, $options: "i" },
+          _id: { $ne: user_id }, // Exclude current user's ID
+        });
+
+        if (validator.isEmpty(data.email)) {
+          errors.email = "Email is required";
+        } else if (!validator.isLength(data.email, { min: 2, max: 30 })) {
+          errors.email = "Email must be between 2 and 30 charactors";
+        } else if (!validator.isEmail(data.email)) {
+          errors.email = "Invalid email";
+        } else if (isDisposable(data.email)) {
+          errors.email = "Disposable email addresses are not allowed";
+        } else if (isDisposableEmail(data.email)) {
+          errors.email =
+            "Please use a real email address — temporary email services are not supported";
+        } else if (isTemporaryEmail(data.email)) {
+          errors.email =
+            "For security reasons, disposable email addresses are not accepted";
+        } else if (emailCount > 0) {
+          errors.email = "An account with this email already exists";
+        }
+      }
+
+      //Validating profilePicture
+      if (data.profilePicture) {
+        if (validator.isEmpty(data.profilePicture)) {
+          errors.profilePicture = "Profile picture is required";
+        } else if (!Types.ObjectId.isValid(data.profilePicture)) {
           errors.profilePicture =
             "Profile picture must be a valid MongoDB ObjectId";
         } else {
-          const image = await images.findById(data.profilePicture);
-          if (!image) {
-            errors.profilePicture = "Profile image does not exist";
-          } else {
-            if (image.uploadedBy.toString() !== user_id) {
-              errors.profilePicture = "Not allowed to upload profile picture";
-            }
-          }
-        }
-      }
-
-      //Validating documents
-
-      // Validate and sanitize removeDocumentIds
-      if (deletedDocuments && Array.isArray(deletedDocuments)) {
-        // Step 1: Filter valid ObjectIds
-        cleanRemoveDocumentIds = deletedDocuments.filter((id) =>
-          Types.ObjectId.isValid(id)
-        );
-        const invalidRemoveIds = deletedDocuments.filter(
-          (id) => !Types.ObjectId.isValid(id)
-        );
-
-        // Step 2: Add validation errors for invalid ObjectIds
-        invalidRemoveIds.forEach((id) => {
-          errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-            "Invalid document ID for removal";
-        });
-
-        // Step 3: Load the user’s current document IDs
-        const user = await users.findById(user_id).select("documents");
-        const currentDocumentIds =
-          user?.documents?.map((id) => id.toString()) || [];
-
-        // Step 4: Check existence in `documents` collection
-        const existingDocuments = await Documents.find({
-          _id: { $in: cleanRemoveDocumentIds },
-        }).select("_id");
-
-        const existingDocumentIds = existingDocuments.map((doc) =>
-          doc._id.toString()
-        );
-
-        // Step 5: Check each ID - must exist in DB and in user document
-        cleanRemoveDocumentIds = cleanRemoveDocumentIds.filter((id) => {
-          const inDb = existingDocumentIds.includes(id);
-          const inUser = currentDocumentIds.includes(id);
-          if (!inDb) {
-            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-              "Document not found in DB";
-          } else if (!inUser) {
-            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-              "Document does not belong to this user";
-          }
-          return inDb && inUser;
-        });
-      }
-
-      // Validate and verify uploaded documents
-      if (documents && documents.length > 0) {
-        if (!Array.isArray(documents)) {
-          errors.documents = "Documents must be an array of document IDs";
-        } else {
-          const validObjectIds = documents.filter((id) =>
-            Types.ObjectId.isValid(id)
-          );
-          const invalidIds = documents.filter(
-            (id) => !Types.ObjectId.isValid(id)
-          );
-
-          invalidIds.forEach((id) => {
-            errors[`documents[${documents.indexOf(id)}]`] =
-              "Invalid MongoDB ObjectId";
-          });
-
-          if (validObjectIds.length === 0) {
-            errors.documents = "No valid documents provided";
-          } else {
-            // Fetch all matching documents uploaded by the user
-            const foundDocuments = await Documents.find({
-              _id: { $in: validObjectIds },
-              uploadedBy: user_id,
-            }).select("_id");
-
-            const foundDocumentIds = foundDocuments.map((doc) =>
-              doc._id.toString()
-            );
-
-            validObjectIds.forEach((id, i) => {
-              if (!foundDocumentIds.includes(id.toString())) {
-                errors[`documents[${documents.indexOf(id)}]`] =
-                  "Document not found or not uploaded by this user";
-              } else {
-                validDocumentIdsToAdd.push(id);
-              }
-            });
+          const profilePicture = await images.findById(data.profilePicture);
+          if (!profilePicture) {
+            errors.profilePicture = "Profile picture does not exist";
           }
         }
       }
@@ -791,8 +733,6 @@ exports.updateValidator = async function (
     return {
       errors,
       isValid: isEmpty(errors),
-      validDocumentIdsToAdd,
-      cleanRemoveDocumentIds,
     };
   } catch (error) {
     console.log("User update validation error : ", error);

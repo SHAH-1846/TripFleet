@@ -7,6 +7,7 @@ const success_function = require("../utils/response-handler").success_function;
 const error_function = require("../utils/response-handler").error_function;
 const extractUserIdFromToken = require("../utils/utils").extractUserIdFromToken;
 const extractIdFromToken = require("../utils/utils").extractIdFromToken;
+const cleanupUploadedAssets = require("../utils/utils").cleanupUploadedAssets;
 const registerDriversValidator =
   require("../validations/userValidations").registerDriversValidator;
 const registerCustomersValidator =
@@ -620,8 +621,6 @@ exports.updateuserTypes = async function (req, res) {
 exports.updateUser = async function (req, res) {
   try {
     const user_id = extractUserIdFromToken(req);
-    const documents = req.body ? req.body.documents : null;
-    const deletedDocuments = req.body ? req.body.deletedDocuments : null;
 
     if (!user_id) {
       let response = error_function({
@@ -630,11 +629,23 @@ exports.updateUser = async function (req, res) {
       });
       return res.status(response.statusCode).send(response);
     }
-    const { errors, isValid, validDocumentIdsToAdd, cleanRemoveDocumentIds } =
-      await updateValidator(req.body, user_id, documents, deletedDocuments);
+    const { errors, isValid } = await updateValidator(req.body, user_id);
+    let user = await users.findById(user_id);
+    if (!user) {
+      let response = error_function({
+        satus: 400,
+        message: "User not found",
+      });
+      return res.status(response.statusCode).send(response);
+    }
 
     if (isValid) {
-      const allowedFields = ["firstName", "lastName", "profilePicture"]; // you can expand this list
+      const allowedFields = [
+        "name",
+        "whatsappNumber",
+        "email",
+        "profilePicture",
+      ]; // you can expand this list
       const updates = {};
 
       allowedFields.forEach((field) => {
@@ -643,62 +654,14 @@ exports.updateUser = async function (req, res) {
         }
       });
 
+      //Clean up already existing profile picture if new profile picture is uploaded
       if (
-        (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
-        (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+        req.body.profilePicture &&
+        user.profilePicture.toString() !== req.body.profilePicture
       ) {
-        const user = await users.findById(user_id).select("documents");
-        if (!user) {
-          return res.status(404).send(
-            error_function({
-              status: 404,
-              message: "User not found",
-            })
-          );
-        }
-        const currentDocumentIds = user.documents.map((id) => id.toString());
-
-        // Remove unwanted documents
-        const remainingDocuments = currentDocumentIds.filter(
-          (id) => !cleanRemoveDocumentIds.includes(id)
-        );
-
-        // Add new documents (avoid duplicates)
-        const finalDocumentIds = Array.from(
-          new Set([
-            ...remainingDocuments,
-            ...validDocumentIdsToAdd.map((id) => id.toString()),
-          ])
-        );
-
-        updates.documents = finalDocumentIds;
-
-        // 1. Convert all IDs to string for comparison
-        const addIds = validDocumentIdsToAdd.map((id) => id.toString());
-        const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
-
-        // 2. Filter out common IDs — these should NOT be deleted
-        const finalRemoveDocumentIds = removeIds.filter(
-          (id) => !addIds.includes(id)
-        );
-
-        // 3. Proceed only if there are non-conflicting IDs left to delete
-        if (finalRemoveDocumentIds.length > 0) {
-          const documentsToDelete = await Documents.find({
-            _id: { $in: finalRemoveDocumentIds },
-          });
-
-          for (const doc of documentsToDelete) {
-            const filePath = path.join(__dirname, "..", doc.path);
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error(`Failed to delete file ${filePath}:`, err);
-              }
-            });
-          }
-
-          await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
-        }
+        await cleanupUploadedAssets({
+          profilePicture: user.profilePicture,
+        });
       }
 
       const updatedUser = await users
@@ -717,6 +680,14 @@ exports.updateUser = async function (req, res) {
         return res.status(response.statusCode).send(response);
       }
 
+      //Save user id in profile picture record in images collection
+      if (req.body.profilePicture) {
+        await images.updateMany(
+          { _id: profilePicture },
+          { $set: { uploadedBy: user_id } }
+        );
+      }
+
       let response = success_function({
         status: 200,
         data: updatedUser,
@@ -724,6 +695,14 @@ exports.updateUser = async function (req, res) {
       });
       return res.status(response.statusCode).send(response);
     } else {
+      if (
+        req.body.profilePicture &&
+        req.body.profilePicture !== user.profilePicture.toString()
+      ) {
+        await cleanupUploadedAssets({
+          profilePicture: req.body.profilePicture,
+        });
+      }
       let response = error_function({
         status: 400,
         message: "Validation failed",
@@ -742,6 +721,11 @@ exports.updateUser = async function (req, res) {
           : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      if (req.body.profilePicture) {
+        await cleanupUploadedAssets({
+          profilePicture: req.body.profilePicture,
+        });
+      }
       return;
     } else {
       console.log("User updation error : ", error);
@@ -750,54 +734,14 @@ exports.updateUser = async function (req, res) {
         message: error.message ? error.message : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      if (req.body.profilePicture) {
+        await cleanupUploadedAssets({
+          profilePicture: req.body.profilePicture,
+        });
+      }
       return;
     }
   }
 };
 
-async function cleanupUploadedAssets({
-  profilePicture,
-  drivingLicense,
-  registrationCertificate,
-  truckImages,
-}) {
-  try {
-    // Delete profile picture
-    if (Types.ObjectId.isValid(profilePicture)) {
-      const img = await images.findById(profilePicture);
-      if (img) {
-        deleteFile(img.path); // delete from uploads
-        await images.deleteOne({ _id: profilePicture }); // delete from DB
-      }
-    }
 
-    // Delete driving license
-    if (Types.ObjectId.isValid(drivingLicense)) {
-      const doc = await Documents.findById(drivingLicense);
-      if (doc) {
-        deleteFile(doc.path); // delete file
-        await Documents.deleteOne({ _id: drivingLicense });
-      }
-    }
-
-    // Delete registration certificate
-    if (Types.ObjectId.isValid(registrationCertificate)) {
-      const doc = await Documents.findById(registrationCertificate);
-      if (doc) {
-        deleteFile(doc.path); // delete file
-        await Documents.deleteOne({ _id: registrationCertificate });
-      }
-    }
-
-    // Delete multiple truck images
-    if (Array.isArray(truckImages)) {
-      const truckImageDocs = await images.find({ _id: { $in: truckImages } });
-      for (let img of truckImageDocs) {
-        deleteFile(img.path); // delete image file
-      }
-      await images.deleteMany({ _id: { $in: truckImages } }); // delete records
-    }
-  } catch (error) {
-    console.error("❌ Error during cleanup:", error);
-  }
-}
