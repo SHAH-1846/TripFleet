@@ -228,7 +228,7 @@ exports.vehicleUpdateValidator = async function (
   data,
   user_id,
   vehicleId,
-  images,
+  truckImages,
   deletedImages,
   documents,
   deletedDocuments
@@ -244,14 +244,18 @@ exports.vehicleUpdateValidator = async function (
     data.user = !isEmpty(data.user) ? data.user : "";
     data.vehicleNumber = !isEmpty(data.vehicleNumber) ? data.vehicleNumber : "";
     data.vehicleType = !isEmpty(data.vehicleType) ? data.vehicleType : "";
-    data.brand = !isEmpty(data.brand) ? data.brand : "";
-    data.model = !isEmpty(data.model) ? data.model : "";
-    data.color = !isEmpty(data.color) ? data.color : "";
-    data.capacity = !isEmpty(data.capacity) ? data.capacity : "";
-    data.status = !isEmpty(data.status) ? data.status : "";
-    data.registrationYear = !isEmpty(data.registrationYear)
-      ? data.registrationYear
+    data.vehicleBodyType = !isEmpty(data.vehicleBodyType)
+      ? data.vehicleBodyType
       : "";
+    data.vehicleCapacity = !isEmpty(data.vehicleCapacity)
+      ? data.vehicleCapacity
+      : "";
+    data.goodsAccepted = !isEmpty(data.goodsAccepted) ? data.goodsAccepted : "";
+    data.registrationCertificate = !isEmpty(data.registrationCertificate)
+      ? data.registrationCertificate
+      : "";
+    data.images = !isEmpty(data.images) ? data.images : "";
+    data.status = !isEmpty(data.status) ? data.status : "";
 
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
@@ -312,6 +316,24 @@ exports.vehicleUpdateValidator = async function (
         }
       }
 
+      //Validating vehicleBodyType
+      if (data.vehicleBodyType) {
+        if (validator.isEmpty(data.vehicleBodyType)) {
+          errors.vehicleBodyType = "Vehicle body type is required";
+        } else if (!Types.ObjectId.isValid(data.vehicleBodyType)) {
+          errors.vehicleBodyType =
+            "Invalid vehicle body type ID. Must be a valid MongoDB ObjectId";
+        } else {
+          const bodyTypeRecord = await vehicle_body_types.findById(
+            data.vehicleBodyType
+          );
+          if (!bodyTypeRecord) {
+            errors.vehicleBodyType =
+              "Selected vehicle body type does not exist";
+          }
+        }
+      }
+
       //Validating status
       if (data.status) {
         if (!Types.ObjectId.isValid(data.status)) {
@@ -325,30 +347,82 @@ exports.vehicleUpdateValidator = async function (
       }
 
       //Validating capacity
-      if (data.capacity) {
-        if (isNaN(data.capacity)) {
-          errors.capacity = "Vehicle capacity should be a number";
-        } else if (Number(data.capacity) <= 0) {
-          errors.capacity = "Vehicle capacity should be greater than zero";
-        }
-      }
-
-      //Validating registration year
-      if (data.registrationYear) {
-        const currentYear = new Date().getFullYear();
-
-        if (isNaN(data.registrationYear)) {
-          errors.registrationYear =
-            "Vehicle registration year should be a number";
-        } else if (
-          Number(data.registrationYear) < 1990 ||
-          Number(data.registrationYear) > currentYear
+      if (data.vehicleCapacity) {
+        if (
+          data.vehicleCapacity === undefined ||
+          data.vehicleCapacity === null ||
+          data.vehicleCapacity === ""
         ) {
-          errors.registrationYear = `Vehicle registration year should be between 1990 and ${currentYear}`;
+          errors.vehicleCapacity = "Vehicle capacity is required";
+        } else if (isNaN(data.vehicleCapacity)) {
+          errors.vehicleCapacity = "Vehicle capacity should be a number";
+        } else if (Number(data.vehicleCapacity) <= 0) {
+          errors.vehicleCapacity =
+            "Vehicle capacity should be greater than zero";
         }
       }
 
-      //Validating images
+      // //Validating registration year
+      // if (data.registrationYear) {
+      //   const currentYear = new Date().getFullYear();
+
+      //   if (isNaN(data.registrationYear)) {
+      //     errors.registrationYear =
+      //       "Vehicle registration year should be a number";
+      //   } else if (
+      //     Number(data.registrationYear) < 1990 ||
+      //     Number(data.registrationYear) > currentYear
+      //   ) {
+      //     errors.registrationYear = `Vehicle registration year should be between 1990 and ${currentYear}`;
+      //   }
+      // }
+
+      //Validating goodsAccepted
+      if (data.goodsAccepted) {
+        if (
+          typeof data.goodsAccepted === "undefined" ||
+          data.goodsAccepted === null ||
+          data.goodsAccepted === ""
+        ) {
+          errors.goodsAccepted = "Goods accepted field is required";
+        } else if (typeof data.goodsAccepted !== "boolean") {
+          // In case the frontend sends it as a string like "true" or "false", may want to allow it:
+          const normalized = String(data.goodsAccepted).toLowerCase();
+          if (normalized !== "true" && normalized !== "false") {
+            errors.goodsAccepted =
+              "Goods accepted must be a boolean value (true or false)";
+          } else {
+            // Convert and assign normalized boolean
+            data.goodsAccepted = normalized === "true";
+          }
+        }
+      }
+
+      //Validating registrationCertificate
+      if (data.registrationCertificate) {
+        if (validator.isEmpty(data.registrationCertificate)) {
+          errors.registrationCertificate =
+            "Registration certificate is required";
+        } else if (!Types.ObjectId.isValid(data.registrationCertificate)) {
+          errors.registrationCertificate =
+            "Registration certificate must be a valid MongoDB ObjectId";
+        } else {
+          const document = await Documents.findById(
+            data.registrationCertificate
+          );
+          if (!document) {
+            errors.registrationCertificate =
+              "Registration certificate document not found";
+          } else if (!document.uploadedBy) {
+            errors.registrationCertificate =
+              "Not allowed, document not uploaded by any existing user";
+          } else if (document.uploadedBy.toString() !== user_id) {
+            errors.registrationCertificate = "Not allowed, invalid user";
+          }
+        }
+      }
+
+      //Validating truckImages
 
       // Validate and sanitize removeImageIds
       if (deletedImages && Array.isArray(deletedImages)) {
@@ -396,23 +470,42 @@ exports.vehicleUpdateValidator = async function (
       }
 
       // Validate and verify uploaded images
-      if (images && images.length > 0) {
-        if (!Array.isArray(images)) {
+      if (!isEmpty(data.images)) {
+        if (isEmpty(data.images)) {
+          errors.images = "Images cannot be empty";
+        }
+        if (!Array.isArray(data.images)) {
+          errors.images = "Images must be an array of image IDs";
+        }
+      }
+      
+      if (data.images && data.images.length > 0) {
+        if (!Array.isArray(data.images)) {
           errors.images = "Images must be an array of image IDs";
         } else {
-          const validObjectIds = images.filter((id) =>
+          const validObjectIds = data.images.filter((id) =>
             Types.ObjectId.isValid(id)
           );
-          const invalidIds = images.filter((id) => !Types.ObjectId.isValid(id));
+          const invalidIds = data.images.filter(
+            (id) => !Types.ObjectId.isValid(id)
+          );
 
           invalidIds.forEach((id) => {
-            errors[`images[${images.indexOf(id)}]`] =
+            errors[`data.images[${data.images.indexOf(id)}]`] =
               "Invalid MongoDB ObjectId";
           });
 
           if (validObjectIds.length === 0) {
             errors.images = "No valid images provided";
           } else {
+            // Check for duplicate images IDs
+            const seen = new Set();
+            data.images.forEach((id, index) => {
+              if (seen.has(id)) {
+                errors[`images[${index}]`] = "Duplicate image ID detected";
+              }
+              seen.add(id);
+            });
             // Fetch all matching images uploaded by the user
             const foundImages = await Image.find({
               _id: { $in: validObjectIds },
@@ -423,7 +516,7 @@ exports.vehicleUpdateValidator = async function (
 
             validObjectIds.forEach((id, i) => {
               if (!foundImageIds.includes(id.toString())) {
-                errors[`images[${images.indexOf(id)}]`] =
+                errors[`images[${data.images.indexOf(id)}]`] =
                   "Image not found or not uploaded by this user";
               } else {
                 validImageIdsToAdd.push(id);
@@ -435,92 +528,92 @@ exports.vehicleUpdateValidator = async function (
 
       //Validating documents
 
-      // Validate and sanitize removeDocumentIds
-      if (deletedDocuments && Array.isArray(deletedDocuments)) {
-        // Step 1: Filter valid ObjectIds
-        cleanRemoveDocumentIds = deletedDocuments.filter((id) =>
-          Types.ObjectId.isValid(id)
-        );
-        const invalidRemoveIds = deletedDocuments.filter(
-          (id) => !Types.ObjectId.isValid(id)
-        );
+      // // Validate and sanitize removeDocumentIds
+      // if (deletedDocuments && Array.isArray(deletedDocuments)) {
+      //   // Step 1: Filter valid ObjectIds
+      //   cleanRemoveDocumentIds = deletedDocuments.filter((id) =>
+      //     Types.ObjectId.isValid(id)
+      //   );
+      //   const invalidRemoveIds = deletedDocuments.filter(
+      //     (id) => !Types.ObjectId.isValid(id)
+      //   );
 
-        // Step 2: Add validation errors for invalid ObjectIds
-        invalidRemoveIds.forEach((id) => {
-          errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-            "Invalid document ID for removal";
-        });
+      //   // Step 2: Add validation errors for invalid ObjectIds
+      //   invalidRemoveIds.forEach((id) => {
+      //     errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+      //       "Invalid document ID for removal";
+      //   });
 
-        // Step 3: Load the vehicle’s current image IDs
-        const vehicle = await vehicles.findById(vehicleId).select("documents");
-        const currentDocumentIds =
-          vehicle?.documents?.map((id) => id.toString()) || [];
+      //   // Step 3: Load the vehicle’s current image IDs
+      //   const vehicle = await vehicles.findById(vehicleId).select("documents");
+      //   const currentDocumentIds =
+      //     vehicle?.documents?.map((id) => id.toString()) || [];
 
-        // Step 4: Check existence in `images` collection
-        const existingDocuments = await Documents.find({
-          _id: { $in: cleanRemoveDocumentIds },
-        }).select("_id");
+      //   // Step 4: Check existence in `images` collection
+      //   const existingDocuments = await Documents.find({
+      //     _id: { $in: cleanRemoveDocumentIds },
+      //   }).select("_id");
 
-        const existingDocumentIds = existingDocuments.map((doc) =>
-          doc._id.toString()
-        );
+      //   const existingDocumentIds = existingDocuments.map((doc) =>
+      //     doc._id.toString()
+      //   );
 
-        // Step 5: Check each ID - must exist in DB and in vehicle document
-        cleanRemoveDocumentIds = cleanRemoveDocumentIds.filter((id) => {
-          const inDb = existingDocumentIds.includes(id);
-          const inVehicle = currentDocumentIds.includes(id);
-          if (!inDb) {
-            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-              "Document not found in DB";
-          } else if (!inVehicle) {
-            errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
-              "Document does not belong to this vehicle";
-          }
-          return inDb && inVehicle;
-        });
-      }
+      //   // Step 5: Check each ID - must exist in DB and in vehicle document
+      //   cleanRemoveDocumentIds = cleanRemoveDocumentIds.filter((id) => {
+      //     const inDb = existingDocumentIds.includes(id);
+      //     const inVehicle = currentDocumentIds.includes(id);
+      //     if (!inDb) {
+      //       errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+      //         "Document not found in DB";
+      //     } else if (!inVehicle) {
+      //       errors[`deletedDocuments[${deletedDocuments.indexOf(id)}]`] =
+      //         "Document does not belong to this vehicle";
+      //     }
+      //     return inDb && inVehicle;
+      //   });
+      // }
 
-      // Validate and verify uploaded documents
-      if (documents && documents.length > 0) {
-        if (!Array.isArray(documents)) {
-          errors.documents = "Documents must be an array of document IDs";
-        } else {
-          const validObjectIds = documents.filter((id) =>
-            Types.ObjectId.isValid(id)
-          );
-          const invalidIds = documents.filter(
-            (id) => !Types.ObjectId.isValid(id)
-          );
+      // // Validate and verify uploaded documents
+      // if (documents && documents.length > 0) {
+      //   if (!Array.isArray(documents)) {
+      //     errors.documents = "Documents must be an array of document IDs";
+      //   } else {
+      //     const validObjectIds = documents.filter((id) =>
+      //       Types.ObjectId.isValid(id)
+      //     );
+      //     const invalidIds = documents.filter(
+      //       (id) => !Types.ObjectId.isValid(id)
+      //     );
 
-          invalidIds.forEach((id) => {
-            errors[`documents[${documents.indexOf(id)}]`] =
-              "Invalid MongoDB ObjectId";
-          });
+      //     invalidIds.forEach((id) => {
+      //       errors[`documents[${documents.indexOf(id)}]`] =
+      //         "Invalid MongoDB ObjectId";
+      //     });
 
-          if (validObjectIds.length === 0) {
-            errors.documents = "No valid documents provided";
-          } else {
-            // Fetch all matching documents uploaded by the user
-            const foundDocuments = await Documents.find({
-              _id: { $in: validObjectIds },
-              uploadedBy: user_id,
-            }).select("_id");
+      //     if (validObjectIds.length === 0) {
+      //       errors.documents = "No valid documents provided";
+      //     } else {
+      //       // Fetch all matching documents uploaded by the user
+      //       const foundDocuments = await Documents.find({
+      //         _id: { $in: validObjectIds },
+      //         uploadedBy: user_id,
+      //       }).select("_id");
 
-            const foundDocumentIds = foundDocuments.map((doc) =>
-              doc._id.toString()
-            );
+      //       const foundDocumentIds = foundDocuments.map((doc) =>
+      //         doc._id.toString()
+      //       );
 
-            validObjectIds.forEach((id, i) => {
-              if (!foundDocumentIds.includes(id.toString())) {
-                errors[`documents[${documents.indexOf(id)}]`] =
-                  "Document not found or not uploaded by this user";
-              } else {
-                validDocumentIdsToAdd.push(id);
-              }
-            });
-          }
-        }
-      }
+      //       validObjectIds.forEach((id, i) => {
+      //         if (!foundDocumentIds.includes(id.toString())) {
+      //           errors[`documents[${documents.indexOf(id)}]`] =
+      //             "Document not found or not uploaded by this user";
+      //         } else {
+      //           validDocumentIdsToAdd.push(id);
+      //         }
+      //       });
+      //     }
+      //   }
+      // }
     }
 
     return {

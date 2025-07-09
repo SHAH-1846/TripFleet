@@ -13,9 +13,10 @@ const setAccessControl = (access_type) => {
 
 router.post('/', setAccessControl('*'),vehicleController.createVehicle);
 router.get('/', setAccessControl('*'), vehicleController.getAllVehicles);
+router.get('/my-vehicles', setAccessControl("*"), vehicleController.getMyVehicles);
 router.get("/body-types", setAccessControl("*"), vehicleController.listVehicleBodyTypes);
 router.get('/types', setAccessControl('*'), vehicleController.listVehicleTypes);
 router.put('/:vehicleId', setAccessControl('*'), vehicleController.updateVehicle);
 router.get('/status', setAccessControl('*'), vehicleController.listVehicleStatuses);
-router.put('/status/:vehicleId', setAccessControl('*'), vehicleController.updateVehicleStatus);
+router.patch('/status/:vehicleId', setAccessControl('*'), vehicleController.updateVehicleStatus);
 module.exports = router;

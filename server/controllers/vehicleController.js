@@ -20,16 +20,17 @@ const updateVehicleStatusValidator =
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const vehicles = require("../db/models/vehicles");
+const images = require("../db/models/images");
 dotenv.config();
 
 exports.createVehicle = async (req, res) => {
   try {
     let user_id = extractUserIdFromToken(req);
 
-    if(!user_id) {
+    if (!user_id) {
       let response = error_function({
-        status : 400,
-        message : "Please login to continue",
+        status: 400,
+        message: "Please login to continue",
       });
       return res.status(response.statusCode).send(response);
     }
@@ -145,29 +146,42 @@ exports.createVehicle = async (req, res) => {
 exports.updateVehicle = async (req, res) => {
   try {
     let user_id = extractUserIdFromToken(req);
-    let images = req.body ? req.body.images : null;
+
+    if (!user_id) {
+      let response = error_function({
+        status: 400,
+        message: "Please login to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+
+    let truckImages = req.body ? req.body.truckImages : null;
     let deletedImages = req.body ? req.body.deletedImages : null;
     let documents = req.body ? req.body.documents : null;
     let deletedDocuments = req.body ? req.body.deletedDocuments : null;
 
     const { vehicleId } = req.params;
 
-    const {
-      errors,
-      isValid,
-      validImageIdsToAdd,
-      cleanRemoveImageIds,
-      validDocumentIdsToAdd,
-      cleanRemoveDocumentIds,
-    } = await vehicleUpdateValidator(
-      req.body,
-      user_id,
-      vehicleId,
-      images,
-      deletedImages,
-      documents,
-      deletedDocuments
-    );
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).send(
+        error_function({
+          status: 404,
+          message: "Vehicle not found",
+        })
+      );
+    }
+
+    const { errors, isValid, validImageIdsToAdd, cleanRemoveImageIds } =
+      await vehicleUpdateValidator(
+        req.body,
+        user_id,
+        vehicleId,
+        truckImages,
+        deletedImages,
+        documents,
+        deletedDocuments
+      );
 
     if (isValid) {
       const updateData = req.body;
@@ -179,19 +193,11 @@ exports.updateVehicle = async (req, res) => {
         )
       );
 
+      //Deleting images
       if (
         (validImageIdsToAdd && validImageIdsToAdd.length > 0) ||
         (cleanRemoveImageIds && cleanRemoveImageIds.length > 0)
       ) {
-        const vehicle = await Vehicle.findById(vehicleId).select("images");
-        if (!vehicle) {
-          return res.status(404).send(
-            error_function({
-              status: 404,
-              message: "Vehicle not found",
-            })
-          );
-        }
         const currentImageIds = vehicle.images.map((id) => id.toString());
 
         // Remove unwanted images
@@ -217,83 +223,98 @@ exports.updateVehicle = async (req, res) => {
         const finalRemoveImageIds = removeIds.filter(
           (id) => !addIds.includes(id)
         );
+        await cleanupUploadedAssets({
+          truckImages: finalRemoveImageIds,
+        });
 
         // 3. Proceed only if there are non-conflicting IDs left to delete
-        if (finalRemoveImageIds.length > 0) {
-          const imagesToDelete = await Image.find({
-            _id: { $in: finalRemoveImageIds },
-          });
+        // if (finalRemoveImageIds.length > 0) {
+        //   const imagesToDelete = await Image.find({
+        //     _id: { $in: finalRemoveImageIds },
+        //   });
 
-          for (const img of imagesToDelete) {
-            const filePath = path.join(__dirname, "..", img.path);
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error(`Failed to delete file ${filePath}:`, err);
-              }
-            });
-          }
+        //   for (const img of imagesToDelete) {
+        //     const filePath = path.join(__dirname, "..", img.path);
+        //     fs.unlink(filePath, (err) => {
+        //       if (err) {
+        //         console.error(`Failed to delete file ${filePath}:`, err);
+        //       }
+        //     });
+        //   }
 
-          await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
-        }
+        //   await Image.deleteMany({ _id: { $in: finalRemoveImageIds } });
+        // }
       }
 
+      //Registration certificate (deleting existing certificate)
+      const existingRC = vehicle.registrationCertificate;
       if (
-        (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
-        (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+        req.body.registrationCertificate &&
+        req.body.registrationCertificate !== existingRC.toString()
       ) {
-        const vehicle = await Vehicle.findById(vehicleId).select("documents");
-        if (!vehicle) {
-          return res.status(404).send(
-            error_function({
-              status: 404,
-              message: "Vehicle not found",
-            })
-          );
-        }
-        const currentDocumentIds = vehicle.documents.map((id) => id.toString());
-
-        // Remove unwanted documents
-        const remainingDocuments = currentDocumentIds.filter(
-          (id) => !cleanRemoveDocumentIds.includes(id)
-        );
-
-        // Add new document (avoid duplicates)
-        const finalDocumentIds = Array.from(
-          new Set([
-            ...remainingDocuments,
-            ...validDocumentIdsToAdd.map((id) => id.toString()),
-          ])
-        );
-
-        updateFields.documents = finalDocumentIds;
-
-        // 1. Convert all IDs to string for comparison
-        const addIds = validDocumentIdsToAdd.map((id) => id.toString());
-        const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
-
-        // 2. Filter out common IDs — these should NOT be deleted
-        const finalRemoveDocumentIds = removeIds.filter(
-          (id) => !addIds.includes(id)
-        );
-
-        // 3. Proceed only if there are non-conflicting IDs left to delete
-        if (finalRemoveDocumentIds.length > 0) {
-          const documentsToDelete = await Documents.find({
-            _id: { $in: finalRemoveDocumentIds },
-          });
-
-          for (const doc of documentsToDelete) {
-            const filePath = path.join(__dirname, "..", doc.path);
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error(`Failed to delete file ${filePath}:`, err);
-              }
-            });
-          }
-
-          await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
-        }
+        //Deletng exististing certificate
+        await cleanupUploadedAssets({
+          registrationCertificate: existingRC,
+        });
       }
+
+      // if (
+      //   (validDocumentIdsToAdd && validDocumentIdsToAdd.length > 0) ||
+      //   (cleanRemoveDocumentIds && cleanRemoveDocumentIds.length > 0)
+      // ) {
+      //   const vehicle = await Vehicle.findById(vehicleId).select("documents");
+      //   if (!vehicle) {
+      //     return res.status(404).send(
+      //       error_function({
+      //         status: 404,
+      //         message: "Vehicle not found",
+      //       })
+      //     );
+      //   }
+      //   const currentDocumentIds = vehicle.documents.map((id) => id.toString());
+
+      //   // Remove unwanted documents
+      //   const remainingDocuments = currentDocumentIds.filter(
+      //     (id) => !cleanRemoveDocumentIds.includes(id)
+      //   );
+
+      //   // Add new document (avoid duplicates)
+      //   const finalDocumentIds = Array.from(
+      //     new Set([
+      //       ...remainingDocuments,
+      //       ...validDocumentIdsToAdd.map((id) => id.toString()),
+      //     ])
+      //   );
+
+      //   updateFields.documents = finalDocumentIds;
+
+      //   // 1. Convert all IDs to string for comparison
+      //   const addIds = validDocumentIdsToAdd.map((id) => id.toString());
+      //   const removeIds = cleanRemoveDocumentIds.map((id) => id.toString());
+
+      //   // 2. Filter out common IDs — these should NOT be deleted
+      //   const finalRemoveDocumentIds = removeIds.filter(
+      //     (id) => !addIds.includes(id)
+      //   );
+
+      //   // 3. Proceed only if there are non-conflicting IDs left to delete
+      //   if (finalRemoveDocumentIds.length > 0) {
+      //     const documentsToDelete = await Documents.find({
+      //       _id: { $in: finalRemoveDocumentIds },
+      //     });
+
+      //     for (const doc of documentsToDelete) {
+      //       const filePath = path.join(__dirname, "..", doc.path);
+      //       fs.unlink(filePath, (err) => {
+      //         if (err) {
+      //           console.error(`Failed to delete file ${filePath}:`, err);
+      //         }
+      //       });
+      //     }
+
+      //     await Documents.deleteMany({ _id: { $in: finalRemoveDocumentIds } });
+      //   }
+      // }
 
       //Formatting vehicleNumber
       if (req.body.vehicleNumber) {
@@ -317,7 +338,7 @@ exports.updateVehicle = async (req, res) => {
       if (!updatedVehicle) {
         let response = error_function({
           status: 404,
-          message: "Vehicle not found",
+          message: "Vehicle updation failed",
         });
         return res.status(response.statusCode).send(response);
       } else {
@@ -329,11 +350,24 @@ exports.updateVehicle = async (req, res) => {
         return res.status(response.statusCode).send(response);
       }
     } else {
+      const newImageIds = Array.isArray(req.body.images)
+        ? req.body.images.map(String)
+        : [];
+      const existingImageIds = vehicle.images.map((id) => id.toString());
+
+      const imagesToDelete = newImageIds.filter(
+        (newImageId) => !existingImageIds.includes(newImageId)
+      );
+
       let response = error_function({
         status: 400,
         message: "Validation Failed",
       });
       response.errors = errors;
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: imagesToDelete,
+      });
       return res.status(response.statusCode).send(response);
     }
   } catch (error) {
@@ -347,12 +381,20 @@ exports.updateVehicle = async (req, res) => {
           : "Something went wrong",
       });
       res.status(response.statusCode).send(response);
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.images,
+      });
       return;
     } else {
       console.log("Vehicles updation error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
+      });
+      await cleanupUploadedAssets({
+        registrationCertificate: req.body.registrationCertificate,
+        truckImages: req.body.images,
       });
       res.status(response.statusCode).send(response);
       return;
@@ -362,41 +404,17 @@ exports.updateVehicle = async (req, res) => {
 
 exports.updateVehicleStatus = async function (req, res) {
   try {
-    let user_id;
+    let user_id = extractUserIdFromToken(req);
     let vehicleId = req.params.vehicleId;
 
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    if (
-      token == null ||
-      token == "null" ||
-      token == "" ||
-      token == "undefined"
-    ) {
+    if(!user_id) {
       let response = error_function({
-        status: 400,
-        message: "Please login to continue",
+        status : 400,
+        message : "Please login to continue",
       });
-      res.status(response.statusCode).send(response);
-      return;
+      return res.status(response.statusCode).send(response);
     }
 
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
     const { isValid, errors } = await updateVehicleStatusValidator(
       req.body,
       user_id,
@@ -458,61 +476,62 @@ exports.updateVehicleStatus = async function (req, res) {
 
 exports.getAllVehicles = async (req, res) => {
   try {
-    const { vehicleType, status, search, user, vehicle } = req.query;
+    const {vehicleType, status, search, user, vehicle, page, pageSize } =
+      req.query;
 
     let filter = {};
 
-    //Validating vehicle
-    if (vehicle) {
-      if (!mongoose.Types.ObjectId.isValid(vehicle)) {
-        let response = error_function({
-          status: 400,
-          message: "Vehicle must be a valid MongoDB ObjectId",
-        });
-        return res.status(response.statusCode).send(response);
-      }
+    // Validations
+    if (vehicle && !mongoose.Types.ObjectId.isValid(vehicle)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "Vehicle must be a valid MongoDB ObjectId",
+          })
+        );
     }
 
-    //Validating user
-    if (user) {
-      if (!mongoose.Types.ObjectId.isValid(user)) {
-        let response = error_function({
-          status: 400,
-          message: "User must be a valid MongoDB ObjectId",
-        });
-        return res.status(response.statusCode).send(response);
-      }
+    if (user && !mongoose.Types.ObjectId.isValid(user)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "User must be a valid MongoDB ObjectId",
+          })
+        );
     }
 
-    //Validating vehicle type
-    if (vehicleType) {
-      if (!mongoose.Types.ObjectId.isValid(vehicleType)) {
-        let response = error_function({
-          status: 400,
-          message: "Vehicle type must be a valid MongoDB ObjectId",
-        });
-        return res.status(response.statusCode).send(response);
-      }
+    if (vehicleType && !mongoose.Types.ObjectId.isValid(vehicleType)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "Vehicle type must be a valid MongoDB ObjectId",
+          })
+        );
     }
 
-    //Validating vehicle status
-    if (status) {
-      if (!mongoose.Types.ObjectId.isValid(status)) {
-        let response = error_function({
-          status: 400,
-          message: "Vehicle status must be a valid MongoDB ObjectId",
-        });
-        return res.status(response.statusCode).send(response);
-      }
+    if (status && !mongoose.Types.ObjectId.isValid(status)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "Vehicle status must be a valid MongoDB ObjectId",
+          })
+        );
     }
 
-    // Specific filters
+    // Filters
     if (vehicle) filter._id = vehicle;
     if (user) filter.user = user;
     if (vehicleType) filter.vehicleType = vehicleType;
     if (status) filter.status = status;
 
-    // Global search
     if (search) {
       filter.$or = [
         { vehicleNumber: { $regex: new RegExp(search, "i") } },
@@ -522,26 +541,36 @@ exports.getAllVehicles = async (req, res) => {
       ];
     }
 
+    // Pagination
+    const currentPage = parseInt(page) > 0 ? parseInt(page) : 1;
+    const limit = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10;
+    const skip = (currentPage - 1) * limit;
+
+    const totalCount = await Vehicle.countDocuments(filter);
+    const totalPages = Math.ceil(totalCount / limit);
+
     const vehicles = await Vehicle.find(filter)
       .populate("vehicleType", "-__v")
+      .populate("vehicleBodyType", "-__v")
+      .populate("registrationCertificate", "-__v")
       .populate("status", "-__v")
       .populate("user", "-password -__v")
-      .populate("images", "-__v");
+      .populate("images", "-__v")
+      .skip(skip)
+      .limit(limit);
 
-    if (vehicles) {
-      let response = success_function({
-        status: 200,
-        data: vehicles,
-        message: "Vehicles fetches successfully",
-      });
-      return res.status(response.statusCode).send(response);
-    } else {
-      let response = error_function({
-        status: 404,
-        message: "Vehicles not found",
-      });
-      return res.status(response).send(response);
-    }
+    let response = success_function({
+      status: 200,
+      data: {
+        count: totalCount,
+        totalPages,
+        currentPage,
+        pageSize: limit,
+        vehicles,
+      },
+      message: "Vehicles fetched successfully",
+    });
+    return res.status(response.statusCode).send(response);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       let response = error_function({
@@ -556,6 +585,114 @@ exports.getAllVehicles = async (req, res) => {
       return;
     } else {
       console.log("Vehicles listing error : ", error);
+      let response = error_function({
+        status: 400,
+        message: error.message ? error.message : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    }
+  }
+};
+
+exports.getMyVehicles = async (req, res) => {
+  try {
+    const {vehicleType, status, search, page, pageSize } =
+      req.query;
+      
+      const user = extractUserIdFromToken(req);
+      if(!user) {
+        let response = error_function({
+          status : 400,
+          message : "Please login to continue",
+        });
+        return res.status(response.statusCode).send(response);
+      }
+
+    let filter = {};
+
+    // Validations
+
+    if (vehicleType && !mongoose.Types.ObjectId.isValid(vehicleType)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "Vehicle type must be a valid MongoDB ObjectId",
+          })
+        );
+    }
+
+    if (status && !mongoose.Types.ObjectId.isValid(status)) {
+      return res
+        .status(400)
+        .send(
+          error_function({
+            status: 400,
+            message: "Vehicle status must be a valid MongoDB ObjectId",
+          })
+        );
+    }
+
+    // Filters
+    if (user) filter.user = user;
+    if (vehicleType) filter.vehicleType = vehicleType;
+    if (status) filter.status = status;
+
+    if (search) {
+      filter.$or = [
+        { vehicleNumber: { $regex: new RegExp(search, "i") } },
+        { model: { $regex: new RegExp(search, "i") } },
+        { brand: { $regex: new RegExp(search, "i") } },
+        { color: { $regex: new RegExp(search, "i") } },
+      ];
+    }
+
+    // Pagination
+    const currentPage = parseInt(page) > 0 ? parseInt(page) : 1;
+    const limit = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10;
+    const skip = (currentPage - 1) * limit;
+
+    const totalCount = await Vehicle.countDocuments(filter);
+    const totalPages = Math.ceil(totalCount / limit);
+
+    const vehicles = await Vehicle.find(filter)
+      .populate("vehicleType", "-__v")
+      .populate("vehicleBodyType", "-__v")
+      .populate("registrationCertificate", "-__v")
+      .populate("status", "-__v")
+      .populate("user", "-password -__v")
+      .populate("images", "-__v")
+      .skip(skip)
+      .limit(limit);
+
+    let response = success_function({
+      status: 200,
+      data: {
+        count: totalCount,
+        totalPages,
+        currentPage,
+        pageSize: limit,
+        vehicles,
+      },
+      message: "Vehicles fetched successfully",
+    });
+    return res.status(response.statusCode).send(response);
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      let response = error_function({
+        status: 400,
+        message: error
+          ? error.message
+            ? error.message
+            : error
+          : "Something went wrong",
+      });
+      res.status(response.statusCode).send(response);
+      return;
+    } else {
+      console.log("My vehicles listing error : ", error);
       let response = error_function({
         status: 400,
         message: error.message ? error.message : "Something went wrong",
