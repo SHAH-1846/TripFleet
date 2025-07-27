@@ -21,8 +21,17 @@ dotenv.config();
 
 exports.createTrip = async function (req, res) {
   try {
-    let { errors, isValid } = await tripValidator(req.body);
-
+    
+    let user_id = extractUserIdFromToken(req);
+    if(!user_id) {
+      let response = error_function({
+        status : 400,
+        message : "Please login to continue",
+      });
+      return res.status(response.statusCode).send(response);
+    }
+    
+    let { errors, isValid } = await tripValidator(req.body, user_id);
     if (isValid) {
       const vehicle = req.body.vehicle;
       const startLocation = req.body.startLocation;
@@ -33,26 +42,6 @@ exports.createTrip = async function (req, res) {
       const tripDate = req.body.tripDate;
       const startTime = req.body.startTime;
       const endTime = req.body.endTime;
-      let user_id;
-
-      const authHeader = req.headers["authorization"]
-        ? req.headers["authorization"]
-        : null;
-      const token = authHeader ? authHeader.split(" ")[1] : null;
-
-      //verifying token
-      jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-        if (err) {
-          let response = error_function({
-            status: 401,
-            message: err.message,
-          });
-          res.status(401).send(response);
-          return;
-        } else {
-          user_id = decoded.user_id;
-        }
-      });
 
       // Format routeCoordinates as GeoJSON LineString
       const geoCoordinates = routeCoordinates.map((point) => [
@@ -132,40 +121,14 @@ exports.createTrip = async function (req, res) {
 
 exports.updatedTrip = async function (req, res) {
   try {
-    let user_id;
-
-    const authHeader = req.headers["authorization"]
-      ? req.headers["authorization"]
-      : null;
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-
-    if (
-      token == null ||
-      token == "null" ||
-      token == "" ||
-      token == "undefined"
-    ) {
+    let user_id = extractUserIdFromToken(req);
+    if(!user_id) {
       let response = error_function({
-        status: 400,
-        message: "Please login to continue",
+        status : 400,
+        message : "Please login to continue",
       });
-      res.status(response.statusCode).send(response);
-      return;
+      return res.status(response.statusCode).send(response);
     }
-
-    //verifying token
-    jwt.verify(token, process.env.PRIVATE_KEY, async function (err, decoded) {
-      if (err) {
-        let response = error_function({
-          status: 401,
-          message: err.message,
-        });
-        res.status(401).send(response);
-        return;
-      } else {
-        user_id = decoded.user_id;
-      }
-    });
 
     const { errors, isValid } = await tripsUpdateValidator(
       req.body,

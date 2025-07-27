@@ -15,7 +15,7 @@ const isValidLatLng = (point) =>
   point.lng >= -180 &&
   point.lng <= 180;
 
-exports.tripValidator = async function (data) {
+exports.tripValidator = async function (data, user_id) {
   try {
     let errors = {};
 
@@ -35,6 +35,19 @@ exports.tripValidator = async function (data) {
     if (isEmpty(data)) {
       errors.data = "Please complete all required fields to continue";
     } else {
+      //Validating user
+      if (!user_id) {
+        errors.user = "Please login to continue";
+      } else if (!Types.ObjectId.isValid(user_id)) {
+        errors.user = "User must be a valid MongoDB ObjectId";
+      } else {
+        const user = await users.findById(user_id);
+        if (!user) {
+          errors.user = "User does not exist";
+        } else if (user.user_type.toString() === "68484d1eefb856d41ac28c55") {
+          errors.user = "Customers cannot add vehicles";
+        }
+      }
       //Validating vehicle
       if (isEmpty(data.vehicle)) {
         errors.vehicle = "Vehicle is required";
@@ -47,6 +60,8 @@ exports.tripValidator = async function (data) {
         });
         if (!vehicle) {
           errors.vehicle = "Vehicle not found or unavailable";
+        } else if (vehicle.user.toString() !== user_id) {
+          errors.vehicle = "Not allowed";
         }
       }
 
@@ -171,9 +186,13 @@ exports.tripsLocationUpdateValidator = function (data) {
     } else {
       if (isEmpty(data.lat)) {
         errors.lat = "Latitude is required";
-      } else if (isEmpty(data.lng)) {
+      }
+
+      if (isEmpty(data.lng)) {
         errors.lng = "Longitude is required";
-      } else if (!isValidLatLng(data)) {
+      }
+
+      if (!isValidLatLng(data)) {
         errors.coordinates =
           "Coordinates are invalid. Please provide valid latitude and longitude values";
       }
@@ -227,7 +246,7 @@ exports.tripsUpdateValidator = async function (data, user_id, tripId) {
           errors.user = "User does not exist";
         } else if (user.user_type.toString() === "68484d1eefb856d41ac28c55") {
           errors.user = "Customers cannot update vehicles";
-        }else if (user_id !== trip.user.toString()) {
+        } else if (user_id !== trip.user.toString()) {
           errors.user = "Not allowed";
         }
       }
@@ -243,6 +262,8 @@ exports.tripsUpdateValidator = async function (data, user_id, tripId) {
           });
           if (!vehicle) {
             errors.vehicle = "Vehicle not found or unavailable";
+          } else if (vehicle.user.toString() !== user_id) {
+            errors.vehicle = "Not allowed";
           }
         }
       }
